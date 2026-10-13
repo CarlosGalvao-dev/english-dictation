@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 
 declare global {
   interface Window {
@@ -47,10 +47,41 @@ export default function App() {
   const [answerStatus, setAnswerStatus] = useState('');
   const [revealed, setRevealed] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
   const previewRef = useRef<HTMLVideoElement>(null);
   const gameVideoRef = useRef<HTMLVideoElement>(null);
+  const gameVideoWrapRef = useRef<HTMLDivElement>(null);
   const wordInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const replayingPhaseRef = useRef(false);
+  const lastFocusedWordRef = useRef(0);
+
+  useEffect(() => {
+    function updateFullscreenState() {
+      setIsVideoFullscreen(document.fullscreenElement === gameVideoWrapRef.current);
+    }
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
+  }, []);
+
+  function focusLastWord(cue: SubtitleCue | null = activeCue) {
+    if (!cue) return;
+    const wordCount = Array.from(cue.text.matchAll(/[\p{L}\p{N}]+/gu)).length;
+    const firstEditableWord = prefillFirstWord ? 1 : 0;
+    const index = Math.min(Math.max(lastFocusedWordRef.current, firstEditableWord), wordCount - 1);
+    if (index >= firstEditableWord) wordInputRefs.current[index]?.focus();
+  }
+
+  async function toggleVideoFullscreen() {
+    const wrapper = gameVideoWrapRef.current;
+    if (!wrapper) return;
+    try {
+      if (document.fullscreenElement === wrapper) await document.exitFullscreen();
+      else await wrapper.requestFullscreen();
+      window.setTimeout(focusLastWord, 0);
+    } catch {
+      setAnswerStatus('Could not change fullscreen mode.');
+    }
+  }
 
   async function chooseVideo() {
     try {
@@ -144,13 +175,12 @@ export default function App() {
     setPlaybackTime(now);
 
     if (activeCue) {
-      // A phase is the line that was just spoken. Replaying it should stop
-      // at its end again; revealing the answer leaves the phase active while
-      // playback continues until the user explicitly changes phase.
+      // A phase is the line that was just spoken. Replaying it stops at its
+      // end again, while the phase remains active until the user changes it.
       if (replayingPhaseRef.current && now >= activeCue.end) {
         player.pause();
         replayingPhaseRef.current = false;
-        window.setTimeout(() => wordInputRefs.current[prefillFirstWord ? 1 : 0]?.focus(), 0);
+        window.setTimeout(() => focusLastWord(activeCue), 0);
       }
       return;
     }
@@ -163,7 +193,7 @@ export default function App() {
       setAnswerWords(prefillFirstWord && firstWord ? [firstWord] : []);
       setAnswerStatus('');
       setRevealed(false);
-      window.setTimeout(() => wordInputRefs.current[prefillFirstWord ? 1 : 0]?.focus(), 0);
+      window.setTimeout(() => focusLastWord(nextCue), 0);
     }
   }
 
@@ -184,15 +214,38 @@ export default function App() {
 
   function updateWord(index: number, expectedWords: string[], value: string, cue: SubtitleCue) {
     const nextWords = [...answerWords];
-    nextWords[index] = value;
+    const typedLetters = Array.from(value).filter(character => /[\p{L}\p{N}]/u.test(character)).join('');
+    const wordLimit = expectedWords[index].length;
+    let focusIndex = index;
+    if (typedLetters.length > wordLimit) {
+      nextWords[index] = typedLetters.slice(0, wordLimit);
+      let overflow = typedLetters.slice(wordLimit);
+      for (let nextIndex = index + 1; nextIndex < expectedWords.length && overflow.length > 0; nextIndex += 1) {
+        if (prefillFirstWord && nextIndex === 0) continue;
+        const combined = `${overflow}${nextWords[nextIndex] || ''}`;
+        const nextLimit = expectedWords[nextIndex].length;
+        nextWords[nextIndex] = combined.slice(0, nextLimit);
+        overflow = combined.slice(nextLimit);
+        focusIndex = nextIndex;
+      }
+      lastFocusedWordRef.current = focusIndex;
+      window.setTimeout(() => wordInputRefs.current[focusIndex]?.focus(), 0);
+    } else {
+      nextWords[index] = typedLetters;
+    }
     setAnswerWords(nextWords);
     setAnswerStatus('');
     if (expectedWords.every((word, wordIndex) => normalizeAnswer(nextWords[wordIndex] || '') === normalizeAnswer(word))) {
       resumeAfterPhase(cue);
       return;
     }
-    if (normalizeAnswer(value) === normalizeAnswer(expectedWords[index]) && index < expectedWords.length - 1) {
-      window.setTimeout(() => wordInputRefs.current[index + 1]?.focus(), 0);
+    const currentValue = nextWords[index] || '';
+    const isCompleteAndCorrect = currentValue.length === wordLimit
+      && normalizeAnswer(currentValue) === normalizeAnswer(expectedWords[index]);
+    if (isCompleteAndCorrect && index < expectedWords.length - 1) {
+      const nextIndex = index + 1;
+      lastFocusedWordRef.current = nextIndex;
+      window.setTimeout(() => wordInputRefs.current[nextIndex]?.focus(), 0);
     }
   }
 
@@ -256,7 +309,10 @@ export default function App() {
       const isPrefilled = prefillFirstWord && wordIndex === 0;
       const shownValue = isPrefilled ? word : value;
       const isCorrect = shownValue.length > 0 && normalizeAnswer(shownValue) === normalizeAnswer(word);
-      const statusClass = value.length === 0 ? '' : isCorrect ? 'word-correct' : 'word-wrong';
+      const typed = normalizeAnswer(value);
+      const expected = normalizeAnswer(word);
+      const hasWrongCharacter = Array.from(typed).some((character, characterIndex) => character !== Array.from(expected)[characterIndex]);
+      const statusClass = isPrefilled || isCorrect ? 'word-correct' : hasWrongCharacter ? 'word-wrong' : '';
       const thisIndex = wordIndex;
       pieces.push(
         <input
@@ -264,17 +320,24 @@ export default function App() {
           ref={element => { wordInputRefs.current[thisIndex] = element; }}
           className={`inline-word ${statusClass} ${isPrefilled ? 'prefilled-word' : ''}`}
           value={shownValue}
-          placeholder={'_'.repeat(Math.max(2, word.length))}
-          style={{ width: `${Math.max(2, word.length, value.length) + 0.7}ch` }}
+          style={{
+            width: `${Math.max(1, word.length, value.length)}ch`,
+            backgroundPosition: `${Math.min(value.length, word.length)}ch bottom`,
+          }}
           onChange={event => updateWord(thisIndex, expectedWords, event.target.value, cue)}
+          onFocus={() => { lastFocusedWordRef.current = thisIndex; }}
           readOnly={isPrefilled}
           onKeyDown={event => {
-            if ((event.key === ' ' || event.key === 'Enter') && isCorrect && thisIndex < expectedWords.length - 1) {
+            if (event.key === ' ' || event.key === 'Enter') {
               event.preventDefault();
-              wordInputRefs.current[thisIndex + 1]?.focus();
+              if (isCorrect && thisIndex < expectedWords.length - 1) {
+                const nextIndex = thisIndex + 1;
+                lastFocusedWordRef.current = nextIndex;
+                wordInputRefs.current[nextIndex]?.focus();
+              }
             }
           }}
-          aria-label={`Palavra ${thisIndex + 1}`}
+          aria-label={`Word ${thisIndex + 1}`}
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
@@ -297,7 +360,7 @@ export default function App() {
       <main className="app-shell game-shell">
         <header className="topbar">
           <div className="brand-mark">ED</div>
-          <div><p className="eyebrow">DITADO EM ANDAMENTO</p><h1>English Dictation</h1></div>
+          <div><p className="eyebrow">DICTATION IN PROGRESS</p><h1>English Dictation</h1></div>
           <button className="back-to-setup" onClick={() => setInGame(false)}>Back to settings</button>
         </header>
         <section className="game-workspace">
@@ -308,17 +371,21 @@ export default function App() {
           </div>
           <div className="game-layout">
             <section className="card game-player-card">
-              <div className="game-video-wrap">
+              <div className="game-video-wrap" ref={gameVideoWrapRef}>
                 <video
                   ref={gameVideoRef}
                   className="game-video"
                   src={video.url}
                   controls
+                  controlsList="nofullscreen"
                   preload="auto"
                   onLoadedMetadata={onGameLoaded}
                   onTimeUpdate={onGameTimeUpdate}
                   onEnded={() => { setFinished(true); setNextCue(null); replayingPhaseRef.current = false; }}
                 />
+                <button className="fullscreen-button" onClick={() => void toggleVideoFullscreen()} aria-label={isVideoFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+                  {isVideoFullscreen ? '⛶ Exit fullscreen' : '⛶ Fullscreen'}
+                </button>
                 {activeCue && <div className={`subtitle-overlay ${revealed ? 'revealed-overlay' : 'input-overlay'}`}>
                   {revealed ? activeCue.text : renderWordInputs(activeCue)}
                 </div>}
@@ -361,7 +428,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand-mark">ED</div>
         <div><p className="eyebrow">LOCAL LISTENING PRACTICE</p><h1>English Dictation</h1></div>
-        <span className="local-badge"><i /> Seus arquivos ficam no computador</span>
+        <span className="local-badge"><i /> Your files stay on this computer</span>
       </header>
       <section className="workspace">
         <div className="intro">

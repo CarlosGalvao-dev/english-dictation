@@ -62,17 +62,18 @@ footer { margin-top: auto; padding-top: 24px; display: flex; justify-content: sp
 .game-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .8fr); gap: 17px; align-items: stretch; }
 .game-player-card { padding: 14px; }
 .game-video-wrap { position: relative; overflow: hidden; background: #050706; border-radius: 10px; }
+.game-video-wrap:fullscreen { width: 100vw; height: 100vh; display: grid; place-items: center; border-radius: 0; }
+.game-video-wrap:fullscreen .game-video { width: 100%; height: 100%; max-height: none; aspect-ratio: auto; }
+.game-video-wrap:fullscreen .subtitle-overlay { bottom: 58px; }
 .game-video { display: block; width: 100%; max-height: 62vh; aspect-ratio: 16 / 9; object-fit: contain; }
+.fullscreen-button { position: absolute; z-index: 4; top: 12px; right: 12px; padding: 7px 10px; border: 1px solid #ffffff55; border-radius: 7px; background: #0009; color: #fff; font-size: 11px; }
 .subtitle-overlay { position: absolute; left: 7%; right: 7%; bottom: 42px; padding: 10px 14px; color: white; background: #000b; border-radius: 6px; text-align: center; font: 600 19px/1.5 'Segoe UI', sans-serif; text-shadow: 0 1px 2px #000; overflow-wrap: anywhere; }
 .input-overlay { line-height: 1.9; }
-.inline-word { display: inline-block; vertical-align: baseline; max-width: 13ch; margin: 0 .04em; padding: 0 0 .02em; border: 0; border-bottom: 2px solid #d9e3da; border-radius: 0; outline: none; background: transparent; color: #fff; text-align: center; text-shadow: 0 1px 2px #000; font: inherit; }
-.inline-word::placeholder { color: #f2f5f2; opacity: .9; }
-.inline-word:focus { border-bottom-color: #b5e5a7; }
-.inline-word.word-correct { color: #8ff099; border-bottom-color: #66e77b; }
-.inline-word.word-correct::placeholder { color: #8ff099; }
-.inline-word.word-wrong { color: #ff8881; border-bottom-color: #ff7770; }
-.inline-word.word-wrong::placeholder { color: #ff8881; }
-.inline-word.prefilled-word { color: #8ff099; border-bottom-color: #66e77b; cursor: default; }
+.inline-word { display: inline-block; vertical-align: baseline; max-width: 13ch; margin: 0 .04em; padding: 0 0 .12em; border: 0; border-radius: 0; outline: none; background-color: transparent; background-image: repeating-linear-gradient(to right, #d9e3da 0 .72ch, transparent .72ch 1ch); background-repeat: repeat-x; background-position: left bottom; background-size: 1ch 2px; color: #fff; text-align: left; text-shadow: 0 1px 2px #000; font: inherit; font-family: Consolas, 'Cascadia Code', monospace; letter-spacing: 0; }
+.inline-word:focus { background-image: repeating-linear-gradient(to right, #b5e5a7 0 .72ch, transparent .72ch 1ch); }
+.inline-word.word-correct { color: #8ff099; background-image: repeating-linear-gradient(to right, #66e77b 0 .72ch, transparent .72ch 1ch); }
+.inline-word.word-wrong { color: #ff8881; background-image: repeating-linear-gradient(to right, #ff7770 0 .72ch, transparent .72ch 1ch); }
+.inline-word.prefilled-word { color: #8ff099; background-image: repeating-linear-gradient(to right, #66e77b 0 .72ch, transparent .72ch 1ch); cursor: default; }
 .revealed-overlay { color: #c6f0bd; }
 .normal-caption { font-size: 15px; }
 .game-transport { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 11px 3px 0; color: #8d9b90; font-size: 10px; }
