@@ -1,0 +1,416 @@
+import { Fragment, useRef, useState } from 'react';
+
+declare global {
+  interface Window {
+    desktop?: {
+      chooseVideo: () => Promise<SelectedVideo | string | null>;
+      prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<{ url: string; converted: boolean }>;
+      extractSubtitle: (filePath: string, streamIndex: number) => Promise<SubtitleCue[]>;
+    };
+  }
+}
+
+type SubtitleTrack = { index: number; codec: string; label: string; textSupported: boolean };
+type SubtitleCue = { start: number; end: number; text: string };
+type VideoInfo = { videoCodec: string; pixelFormat: string; format: string };
+type SelectedVideo = VideoInfo & { path: string; tracks: SubtitleTrack[] };
+
+function normalizeAnswer(text: string) {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+function wordCount(text: string) {
+  return (text.match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu) || []).length;
+}
+
+export default function App() {
+  const [video, setVideo] = useState<{ path: string; url: string } | null>(null);
+  const [videoError, setVideoError] = useState('');
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [tracks, setTracks] = useState<SubtitleTrack[]>([]);
+  const [selectedTrack, setSelectedTrack] = useState('');
+  const [subtitleStatus, setSubtitleStatus] = useState('Internal subtitle tracks will appear here');
+  const [subtitleLoading, setSubtitleLoading] = useState(false);
+  const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
+  const [subtitleMode, setSubtitleMode] = useState<'outside' | 'off'>('outside');
+  const [minimumWords, setMinimumWords] = useState(5);
+  const [interval, setInterval] = useState(30);
+  const [maxCharacters, setMaxCharacters] = useState(100);
+  const [prefillFirstWord, setPrefillFirstWord] = useState(false);
+  const [sessionError, setSessionError] = useState('');
+  const [inGame, setInGame] = useState(false);
+  const [gameStartTime, setGameStartTime] = useState(0);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [nextCue, setNextCue] = useState<SubtitleCue | null>(null);
+  const [activeCue, setActiveCue] = useState<SubtitleCue | null>(null);
+  const [answerWords, setAnswerWords] = useState<string[]>([]);
+  const [answerStatus, setAnswerStatus] = useState('');
+  const [revealed, setRevealed] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const previewRef = useRef<HTMLVideoElement>(null);
+  const gameVideoRef = useRef<HTMLVideoElement>(null);
+  const wordInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const replayingPhaseRef = useRef(false);
+
+  async function chooseVideo() {
+    try {
+      const selected = await window.desktop?.chooseVideo();
+      if (!selected) return;
+      if (typeof selected === 'string' || !Array.isArray(selected.tracks)) {
+        setVideoError('The app is still running an old version. Close all game windows and restart it with npm run dev.');
+        return;
+      }
+      setVideo({ path: selected.path, url: '' });
+      setTracks(selected.tracks.filter(track => track.textSupported));
+      setSubtitleCues([]);
+      setSelectedTrack('');
+      const textTracks = selected.tracks.filter(track => track.textSupported);
+      setSubtitleStatus(textTracks.length
+        ? `${textTracks.length} text subtitle track(s) found.`
+        : selected.tracks.length
+          ? `This video has subtitle tracks, but they are not text-based: ${selected.tracks.map(track => track.codec).join(', ')}.`
+          : 'No subtitle tracks were found in this video.');
+      setVideoError('');
+      setSessionError('');
+      setVideoLoading(true);
+      const prepared = await window.desktop?.prepareVideo(selected.path, selected);
+      if (prepared) {
+        setVideo({ path: selected.path, url: prepared.url });
+        setVideoError('');
+      }
+    } catch (error) {
+      setVideoError(error instanceof Error ? error.message : 'Could not prepare this video.');
+    } finally {
+      setVideoLoading(false);
+    }
+  }
+
+  async function chooseTrack(value: string) {
+    setSelectedTrack(value);
+    setSubtitleCues([]);
+    if (!value || !video || !window.desktop) return;
+    setSubtitleLoading(true);
+    setSubtitleStatus('');
+    try {
+      const cues = await window.desktop.extractSubtitle(video.path, Number(value));
+      setSubtitleCues(cues);
+      setSubtitleStatus(`Subtitle loaded · ${cues.length.toLocaleString('en-US')} lines`);
+    } catch {
+      setSubtitleStatus('Could not read this subtitle track.');
+    } finally {
+      setSubtitleLoading(false);
+    }
+  }
+
+  function eligibleCues() {
+    return subtitleCues.filter(cue =>
+      wordCount(cue.text) >= Math.max(1, minimumWords)
+      && cue.text.length <= Math.max(1, maxCharacters),
+    );
+  }
+
+  function startSession() {
+    const available = eligibleCues();
+    const currentTime = previewRef.current?.currentTime || 0;
+    const targetTime = currentTime + Math.max(1, interval);
+    const firstCue = available.find(cue => cue.start >= targetTime)
+      || available.find(cue => cue.start > currentTime);
+    if (!firstCue) {
+      setSessionError('There are no lines matching these criteria after the current video position. Lower the minimum word count or maximum length, or rewind the video.');
+      return;
+    }
+    setSessionError('');
+    setGameStartTime(currentTime);
+    setNextCue(firstCue);
+    setActiveCue(null);
+    setAnswerWords([]);
+    setAnswerStatus('');
+    setRevealed(false);
+    setFinished(false);
+    setInGame(true);
+  }
+
+  function onGameLoaded() {
+    const player = gameVideoRef.current;
+    if (!player) return;
+    player.currentTime = gameStartTime;
+    void player.play().catch(() => setAnswerStatus('Click the video play button to start playback.'));
+  }
+
+  function onGameTimeUpdate() {
+    const player = gameVideoRef.current;
+    if (!player) return;
+    const now = player.currentTime;
+    setPlaybackTime(now);
+
+    if (activeCue) {
+      // A phase is the line that was just spoken. Replaying it should stop
+      // at its end again; revealing the answer leaves the phase active while
+      // playback continues until the user explicitly changes phase.
+      if (replayingPhaseRef.current && now >= activeCue.end) {
+        player.pause();
+        replayingPhaseRef.current = false;
+        window.setTimeout(() => wordInputRefs.current[prefillFirstWord ? 1 : 0]?.focus(), 0);
+      }
+      return;
+    }
+
+    if (nextCue && now >= nextCue.end) {
+      player.pause();
+      setActiveCue(nextCue);
+      setNextCue(null);
+      const firstWord = nextCue.text.match(/[\p{L}\p{N}]+/u)?.[0];
+      setAnswerWords(prefillFirstWord && firstWord ? [firstWord] : []);
+      setAnswerStatus('');
+      setRevealed(false);
+      window.setTimeout(() => wordInputRefs.current[prefillFirstWord ? 1 : 0]?.focus(), 0);
+    }
+  }
+
+  function scheduleFollowingCue(cue: SubtitleCue) {
+    const next = eligibleCues().find(item => item.start >= cue.start + Math.max(1, interval));
+    setNextCue(next || null);
+  }
+
+  function resumeAfterPhase(cue: SubtitleCue) {
+    replayingPhaseRef.current = false;
+    setActiveCue(null);
+    setRevealed(false);
+    setAnswerWords([]);
+    setAnswerStatus('');
+    scheduleFollowingCue(cue);
+    void gameVideoRef.current?.play();
+  }
+
+  function updateWord(index: number, expectedWords: string[], value: string, cue: SubtitleCue) {
+    const nextWords = [...answerWords];
+    nextWords[index] = value;
+    setAnswerWords(nextWords);
+    setAnswerStatus('');
+    if (expectedWords.every((word, wordIndex) => normalizeAnswer(nextWords[wordIndex] || '') === normalizeAnswer(word))) {
+      resumeAfterPhase(cue);
+      return;
+    }
+    if (normalizeAnswer(value) === normalizeAnswer(expectedWords[index]) && index < expectedWords.length - 1) {
+      window.setTimeout(() => wordInputRefs.current[index + 1]?.focus(), 0);
+    }
+  }
+
+  function skipPhase() {
+    if (!activeCue) return;
+    const cue = activeCue;
+    setActiveCue(null);
+    setAnswerWords([]);
+    setAnswerStatus('');
+    setRevealed(false);
+    replayingPhaseRef.current = false;
+    scheduleFollowingCue(cue);
+    void gameVideoRef.current?.play();
+  }
+
+  function restartPhase() {
+    if (!activeCue || !gameVideoRef.current) return;
+    gameVideoRef.current.currentTime = activeCue.start;
+    setRevealed(false);
+    replayingPhaseRef.current = true;
+    void gameVideoRef.current.play();
+  }
+
+  function revealAnswer() {
+    if (!activeCue) return;
+    setRevealed(true);
+  }
+
+  function goToNextPhase() {
+    const player = gameVideoRef.current;
+    if (!player) return;
+    const afterTime = activeCue?.start ?? player.currentTime;
+    const next = eligibleCues().find(cue => cue.start > afterTime + 0.05);
+    if (!next) {
+      setAnswerStatus('There are no more eligible lines in this video.');
+      return;
+    }
+    player.pause();
+    player.currentTime = next.start;
+    setActiveCue(null);
+    setNextCue(next);
+    setAnswerWords([]);
+    setAnswerStatus('');
+    setRevealed(false);
+    replayingPhaseRef.current = false;
+    setFinished(false);
+    void player.play();
+  }
+
+  function renderWordInputs(cue: SubtitleCue) {
+    const expression = /[\p{L}\p{N}]+/gu;
+    const expectedWords = Array.from(cue.text.matchAll(expression), match => match[0]);
+    const pieces: React.ReactNode[] = [];
+    let cursor = 0;
+    let wordIndex = 0;
+    for (const match of cue.text.matchAll(expression)) {
+      const index = match.index ?? 0;
+      const word = match[0];
+      if (index > cursor) pieces.push(<span key={`text-${wordIndex}`}>{cue.text.slice(cursor, index)}</span>);
+      const value = answerWords[wordIndex] || '';
+      const isPrefilled = prefillFirstWord && wordIndex === 0;
+      const shownValue = isPrefilled ? word : value;
+      const isCorrect = shownValue.length > 0 && normalizeAnswer(shownValue) === normalizeAnswer(word);
+      const statusClass = value.length === 0 ? '' : isCorrect ? 'word-correct' : 'word-wrong';
+      const thisIndex = wordIndex;
+      pieces.push(
+        <input
+          key={`word-${thisIndex}`}
+          ref={element => { wordInputRefs.current[thisIndex] = element; }}
+          className={`inline-word ${statusClass} ${isPrefilled ? 'prefilled-word' : ''}`}
+          value={shownValue}
+          placeholder={'_'.repeat(Math.max(2, word.length))}
+          style={{ width: `${Math.max(2, word.length, value.length) + 0.7}ch` }}
+          onChange={event => updateWord(thisIndex, expectedWords, event.target.value, cue)}
+          readOnly={isPrefilled}
+          onKeyDown={event => {
+            if ((event.key === ' ' || event.key === 'Enter') && isCorrect && thisIndex < expectedWords.length - 1) {
+              event.preventDefault();
+              wordInputRefs.current[thisIndex + 1]?.focus();
+            }
+          }}
+          aria-label={`Palavra ${thisIndex + 1}`}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />,
+      );
+      cursor = index + word.length;
+      wordIndex += 1;
+    }
+    if (cursor < cue.text.length) pieces.push(<span key="text-end">{cue.text.slice(cursor)}</span>);
+    return pieces.map((piece, index) => <Fragment key={index}>{piece}</Fragment>);
+  }
+
+  const captionCue = subtitleCues.find(cue => playbackTime >= cue.start && playbackTime <= cue.end);
+  const currentCaption = captionCue && !activeCue && !(nextCue && captionCue.start === nextCue.start)
+    ? captionCue.text
+    : undefined;
+
+  if (inGame && video?.url) {
+    return (
+      <main className="app-shell game-shell">
+        <header className="topbar">
+          <div className="brand-mark">ED</div>
+          <div><p className="eyebrow">DITADO EM ANDAMENTO</p><h1>English Dictation</h1></div>
+          <button className="back-to-setup" onClick={() => setInGame(false)}>Back to settings</button>
+        </header>
+        <section className="game-workspace">
+          <div className="game-heading">
+            <p className="eyebrow">LISTEN CAREFULLY</p>
+            <h2>{activeCue ? 'Type the full line' : finished ? 'Video finished' : 'Session is playing'}</h2>
+            <p className="muted">{activeCue ? 'Fill in the blanks over the video.' : finished ? 'You have reached the end of the video.' : 'The video will pause at the next selected line.'}</p>
+          </div>
+          <div className="game-layout">
+            <section className="card game-player-card">
+              <div className="game-video-wrap">
+                <video
+                  ref={gameVideoRef}
+                  className="game-video"
+                  src={video.url}
+                  controls
+                  preload="auto"
+                  onLoadedMetadata={onGameLoaded}
+                  onTimeUpdate={onGameTimeUpdate}
+                  onEnded={() => { setFinished(true); setNextCue(null); replayingPhaseRef.current = false; }}
+                />
+                {activeCue && <div className={`subtitle-overlay ${revealed ? 'revealed-overlay' : 'input-overlay'}`}>
+                  {revealed ? activeCue.text : renderWordInputs(activeCue)}
+                </div>}
+                {!activeCue && subtitleMode === 'outside' && currentCaption && <div className="subtitle-overlay normal-caption">{currentCaption}</div>}
+              </div>
+              <div className="game-transport">
+                <span>{activeCue ? 'Current phase' : nextCue ? 'Next pause scheduled' : finished ? 'Session ended' : 'Continuous playback'}</span>
+                <button onClick={() => setInGame(false)}>End session</button>
+              </div>
+            </section>
+            <section className="card answer-card">
+              <div className="card-heading"><div className="number">✎</div><div><h3>Your dictation</h3><p>Type the full sentence</p></div></div>
+              {activeCue ? (
+                <div className="phase-instructions">
+                  <div className="answer-mask">Type each word in the blanks over the video.</div>
+                  <p className="answer-feedback">Correct words turn green; incorrect words turn red.</p>
+                  {revealed && <div className="revealed-answer"><span>ANSWER</span><strong>{activeCue.text}</strong><p>The video remains paused until you choose an action.</p></div>}
+                  {answerStatus && <p className="answer-feedback">{answerStatus}</p>}
+                </div>
+              ) : (
+                <div className="waiting-card"><span className="waiting-dot"/><p>{finished ? 'There are no more lines to practice.' : 'Wait for the next dictation line.'}</p></div>
+              )}
+              <div className="phase-actions">
+                {activeCue && <button onClick={restartPhase}>↶ Back</button>}
+                {activeCue && <button onClick={skipPhase}>Skip →</button>}
+                <button onClick={goToNextPhase}>Next phase</button>
+                {activeCue && !revealed && <button className="reveal-button" onClick={revealAnswer}>Show answer</button>}
+              </div>
+              {!activeCue && sessionError && <p className="video-error">{sessionError}</p>}
+            </section>
+          </div>
+        </section>
+        <footer><span>ENGLISH DICTATION</span><span>PRACTICE AT YOUR OWN PACE</span></footer>
+      </main>
+    );
+  }
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div className="brand-mark">ED</div>
+        <div><p className="eyebrow">LOCAL LISTENING PRACTICE</p><h1>English Dictation</h1></div>
+        <span className="local-badge"><i /> Seus arquivos ficam no computador</span>
+      </header>
+      <section className="workspace">
+        <div className="intro">
+          <div><p className="eyebrow">STUDY SESSION</p><h2>Turn any scene into practice.</h2><p className="muted">Choose a video and subtitle track to create your dictation exercise.</p></div>
+          <div className="step-indicator"><span>01</span><b />02<b />03</div>
+        </div>
+        <div className="columns">
+          <section className="card media-card">
+            <div className="card-heading"><div className="number">01</div><div><h3>Choose a video</h3><p>Select a file from your computer</p></div></div>
+            <button className="dropzone" onClick={() => void chooseVideo()}>
+              <span className="upload-icon">↑</span>
+              <strong>{video ? 'Video selected' : 'Open a video file'}</strong>
+              <span className="file-name">{videoLoading ? 'Preparing video for playback…' : video?.path || 'MKV, MP4, AVI, MOV, and other formats'}</span>
+              <span className="browse-button">Browse files</span>
+            </button>
+            {videoError && <p className="video-error">{videoError}</p>}
+            {video?.url && <div className="video-preview-wrap"><video ref={previewRef} className="video-preview" src={video.url} controls /></div>}
+            <div className="card-heading subtitle-heading"><div className="number">02</div><div><h3>Subtitle track</h3><p>Text subtitles found in the video</p></div></div>
+            <div className="track-placeholder">
+              <span className="caption-icon">CC</span>
+              {tracks.length > 0 ? (
+                <select className="track-select" value={selectedTrack} onChange={event => void chooseTrack(event.target.value)}>
+                  <option value="">Choose a subtitle track</option>
+                  {tracks.map(track => <option value={track.index} key={track.index}>{track.label}</option>)}
+                </select>
+              ) : <div><strong>{video ? 'Internal tracks' : 'Waiting for a video'}</strong><span>{subtitleStatus}</span></div>}
+              <span className="chevron">⌄</span>
+            </div>
+            {(subtitleStatus || subtitleLoading) && <p className="helper">{subtitleLoading ? 'Reading subtitle lines…' : subtitleStatus}</p>}
+            <p className="helper">External .srt subtitles are not supported yet.</p>
+          </section>
+          <section className="card settings-card">
+            <div className="card-heading"><div className="number">03</div><div><h3>Configure your session</h3><p>Adjust the pace of the exercise</p></div></div>
+            <label className="field-label" htmlFor="interval">Pause for an exercise every</label>
+            <div className="input-with-unit"><input id="interval" type="number" min="1" value={interval} onChange={event => setInterval(Number(event.target.value))} /><span>seconds</span></div>
+            <p className="helper">The video pauses at an eligible line after this interval.</p>
+            <label className="field-label spaced" htmlFor="minimum">Minimum words per line</label>
+            <div className="input-with-unit"><input id="minimum" type="number" min="1" value={minimumWords} onChange={event => setMinimumWords(Number(event.target.value))} /><span>words</span></div>
+            <label className="field-label spaced" htmlFor="length">Maximum line length</label>
+            <div className="input-with-unit"><input id="length" type="number" min="20" value={maxCharacters} onChange={event => setMaxCharacters(Number(event.target.value))} /><span>characters</span></div>
+            <label className="prefill-setting"><input type="checkbox" checked={prefillFirstWord} onChange={event => setPrefillFirstWord(event.target.checked)} /><span><strong>Fill in the first word</strong><small>The word is shown as correct and cannot be edited.</small></span></label>
+            <div className="subtitles-setting"><div><strong>Subtitles outside exercises</strong><span>They stay hidden during a phase</span></div><div className="segmented"><button className={subtitleMode === 'outside' ? 'active' : ''} onClick={() => setSubtitleMode('outside')}>Visible</button><button className={subtitleMode === 'off' ? 'active' : ''} onClick={() => setSubtitleMode('off')}>Off</button></div></div>
+            {sessionError && <p className="video-error">{sessionError}</p>}
+            <button className="start-button" onClick={startSession} disabled={!video?.url || !selectedTrack || !subtitleCues.length || videoLoading || subtitleLoading}>Continue <span>→</span></button>
+            <p className="privacy-note">◆ &nbsp;No video or progress data is sent over the internet.</p>
+          </section>
+        </div>
+      </section>
+      <footer><span>ENGLISH DICTATION</span><span>PRACTICE AT YOUR OWN PACE</span></footer>
+    </main>
+  );
+}

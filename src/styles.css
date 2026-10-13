@@ -1,0 +1,97 @@
+:root { font-family: 'Segoe UI', system-ui, sans-serif; color: #edf2ed; background: #101512; font-synthesis: none; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 900px; min-height: 100vh; background: radial-gradient(ellipse at 50% -15%, #23362a 0, #101512 56%); }
+button, input { font: inherit; }
+button { cursor: pointer; }
+.app-shell { max-width: 1240px; margin: 0 auto; padding: 28px 54px 20px; min-height: 100vh; display: flex; flex-direction: column; }
+.topbar { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #26312a; padding-bottom: 22px; }
+.brand-mark { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #102014; background: #b4e5a6; font: 800 15px Manrope; letter-spacing: -1px; }
+h1,h2,h3,p { margin: 0; }
+h1 { font: 700 17px 'Segoe UI', sans-serif; letter-spacing: -.35px; }
+.eyebrow { color: #86a08b; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; margin-bottom: 4px; }
+.local-badge { margin-left: auto; color: #b4c0b6; font-size: 11px; border: 1px solid #344338; background: #18221b; padding: 9px 12px; border-radius: 20px; }
+.local-badge i { display: inline-block; width: 6px; height: 6px; margin: 0 7px 1px 0; border-radius: 50%; background: #9bd890; }
+.workspace { width: 100%; margin: 39px auto 0; max-width: 1030px; }
+.intro { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
+h2 { font: 700 28px 'Segoe UI', sans-serif; letter-spacing: -1px; margin: 7px 0 5px; }
+.muted { color: #9ca99e; font-size: 13px; }
+.step-indicator { display: flex; align-items: center; gap: 8px; color: #8c9a8f; font-size: 10px; padding-bottom: 5px; }
+.step-indicator span { color: #b8e7a9; }.step-indicator b { width: 24px; height: 1px; background: #3c493e; }
+.columns { display: grid; grid-template-columns: 1.03fr .97fr; gap: 17px; }
+.card { border: 1px solid #2b382e; background: linear-gradient(145deg, rgba(27,38,30,.96), rgba(21,29,24,.97)); border-radius: 15px; padding: 23px; box-shadow: 0 18px 50px #0002; }
+.card-heading { display: flex; align-items: center; gap: 11px; margin-bottom: 18px; }
+.number { width: 27px; height: 27px; border: 1px solid #50624d; color: #b4e5a6; border-radius: 8px; display: grid; place-items: center; font-size: 10px; font-weight: 700; }
+h3 { font: 650 14px 'Segoe UI', sans-serif; margin-bottom: 3px; }.card-heading p { color: #8d9b90; font-size: 11px; }
+.dropzone { display: flex; width: 100%; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #52634e; border-radius: 12px; background: #19231b; color: #e8eee8; transition: .15s; padding: 18px; }
+.dropzone:hover { border-color: #a6d69b; background: #1c2a1e; }
+.upload-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #b5e7a8; background: #2b3c2a; font-size: 21px; margin-bottom: 9px; }
+.dropzone strong { font-size: 12px; }.file-name { color: #8d9c90; font-size: 10px; margin-top: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-button { border: 1px solid #485a46; padding: 7px 11px; border-radius: 7px; margin-top: 13px; font-size: 10px; font-weight: 600; }
+.video-preview-wrap { margin-top: 12px; }
+.video-preview { display: block; width: 100%; max-height: 240px; border-radius: 9px; background: #080b09; }
+.video-error { color: #f0b8a8; font-size: 10px; line-height: 1.5; margin-top: 7px; }
+.subtitle-heading { margin: 21px 0 12px; }
+.track-placeholder { display: flex; align-items: center; gap: 10px; border: 1px solid #334036; background: #171f19; border-radius: 9px; padding: 11px; color: #708073; }
+.caption-icon { font-size: 10px; font-weight: 700; border: 1px solid #48584a; padding: 4px; border-radius: 4px; }
+.track-placeholder div { display: flex; flex-direction: column; gap: 3px; font-size: 10px; }.track-placeholder strong { color: #aab6ab; font-weight: 500; }.chevron { margin-left: auto; }
+.track-select { flex: 1; min-width: 0; border: 0; outline: none; appearance: none; background: transparent; color: #d7e2d8; font: inherit; font-size: 10px; }
+.track-select option { background: #18211a; color: #e6eee7; }
+.helper { color: #77857a; font-size: 10px; line-height: 1.5; margin-top: 8px; }
+.field-label { display: block; font-size: 11px; font-weight: 600; color: #dce5dd; margin-bottom: 7px; }
+.input-with-unit { height: 38px; border: 1px solid #354239; border-radius: 8px; display: flex; align-items: center; background: #141b16; padding: 0 11px; }
+.input-with-unit input { width: 100%; min-width: 0; background: transparent; border: 0; outline: none; color: #eff5ef; font-size: 12px; }
+.input-with-unit span { color: #7e8c81; font-size: 10px; white-space: nowrap; }
+.spaced { margin-top: 15px; }
+.prefill-setting { display: flex; align-items: flex-start; gap: 9px; margin-top: 17px; padding: 11px; border: 1px solid #334036; border-radius: 8px; background: #171f19; cursor: pointer; }
+.prefill-setting input { margin: 2px 0 0; accent-color: #a9dc9b; }
+.prefill-setting span { display: flex; flex-direction: column; gap: 4px; }
+.prefill-setting strong { color: #dce5dd; font-size: 10px; }
+.prefill-setting small { color: #819084; font-size: 9px; }
+.subtitles-setting { border-top: 1px solid #2f3a31; margin-top: 19px; padding-top: 15px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.subtitles-setting div:first-child { display: flex; flex-direction: column; gap: 4px; }.subtitles-setting strong { font-size: 10px; }.subtitles-setting span { color: #819084; font-size: 9px; }
+.segmented { display: flex; background: #111713; border: 1px solid #303b32; border-radius: 7px; padding: 3px; flex-shrink: 0; }
+.segmented button { border: 0; background: transparent; color: #849087; font-size: 9px; padding: 6px 8px; border-radius: 5px; }
+.segmented button.active { background: #304230; color: #c1edb5; }
+.start-button { width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; padding: 11px; border: 0; border-radius: 8px; background: #b5e5a7; color: #152116; font-weight: 700; font-size: 12px; }
+.start-button:disabled { cursor: not-allowed; opacity: .45; }.start-button span { font-size: 16px; line-height: 10px; }
+.privacy-note { color: #728074; font-size: 9px; text-align: center; margin-top: 11px; }
+footer { margin-top: auto; padding-top: 24px; display: flex; justify-content: space-between; color: #607064; font-size: 8px; letter-spacing: 1.2px; }
+.game-workspace { width: 100%; max-width: 1080px; margin: 38px auto; }
+.game-heading { margin-bottom: 22px; }
+.game-heading h2 { margin-top: 7px; }
+.game-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .8fr); gap: 17px; align-items: stretch; }
+.game-player-card { padding: 14px; }
+.game-video-wrap { position: relative; overflow: hidden; background: #050706; border-radius: 10px; }
+.game-video { display: block; width: 100%; max-height: 62vh; aspect-ratio: 16 / 9; object-fit: contain; }
+.subtitle-overlay { position: absolute; left: 7%; right: 7%; bottom: 42px; padding: 10px 14px; color: white; background: #000b; border-radius: 6px; text-align: center; font: 600 19px/1.5 'Segoe UI', sans-serif; text-shadow: 0 1px 2px #000; overflow-wrap: anywhere; }
+.input-overlay { line-height: 1.9; }
+.inline-word { display: inline-block; vertical-align: baseline; max-width: 13ch; margin: 0 .04em; padding: 0 0 .02em; border: 0; border-bottom: 2px solid #d9e3da; border-radius: 0; outline: none; background: transparent; color: #fff; text-align: center; text-shadow: 0 1px 2px #000; font: inherit; }
+.inline-word::placeholder { color: #f2f5f2; opacity: .9; }
+.inline-word:focus { border-bottom-color: #b5e5a7; }
+.inline-word.word-correct { color: #8ff099; border-bottom-color: #66e77b; }
+.inline-word.word-correct::placeholder { color: #8ff099; }
+.inline-word.word-wrong { color: #ff8881; border-bottom-color: #ff7770; }
+.inline-word.word-wrong::placeholder { color: #ff8881; }
+.inline-word.prefilled-word { color: #8ff099; border-bottom-color: #66e77b; cursor: default; }
+.revealed-overlay { color: #c6f0bd; }
+.normal-caption { font-size: 15px; }
+.game-transport { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 11px 3px 0; color: #8d9b90; font-size: 10px; }
+.game-transport button, .back-to-setup { color: #bfd8c0; background: #1c291f; border: 1px solid #3a4b3b; border-radius: 7px; padding: 8px 11px; font-size: 10px; }
+.back-to-setup { margin-left: auto; }
+.answer-card { display: flex; flex-direction: column; }
+.answer-mask { min-height: 120px; display: flex; align-items: center; padding: 16px; border: 1px solid #39493b; border-radius: 9px; background: #131a15; color: #cbe9c5; font: 600 17px/1.7 'Cascadia Code', Consolas, monospace; overflow-wrap: anywhere; }
+.answer-input { width: 100%; min-height: 118px; resize: vertical; padding: 11px; border: 1px solid #455646; border-radius: 8px; outline: none; background: #111713; color: #eff5ef; font-size: 13px; line-height: 1.6; }
+.answer-input:focus { border-color: #9bc58e; }
+.answer-feedback { color: #f0bd9f; font-size: 10px; margin-top: 8px; }
+.phase-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: auto; padding-top: 16px; }
+.phase-actions button { color: #c5d2c6; background: #1a241c; border: 1px solid #3a493b; border-radius: 7px; padding: 8px 10px; font-size: 10px; }
+.phase-actions .reveal-button { flex-basis: 100%; color: #172117; background: #b5e5a7; border-color: #b5e5a7; font-weight: 700; }
+.phase-instructions { flex: 1; }
+.phase-instructions .answer-mask { min-height: 130px; color: #b5c6b7; font: 500 12px/1.6 'Segoe UI', sans-serif; }
+.waiting-card { flex: 1; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #93a095; text-align: center; font-size: 12px; }
+.waiting-dot { width: 10px; height: 10px; border-radius: 50%; background: #b5e5a7; box-shadow: 0 0 18px #a9e29a88; }
+.revealed-answer { min-height: 220px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+.revealed-answer span { color: #99b694; font-size: 9px; font-weight: 700; letter-spacing: 1.3px; }
+.revealed-answer strong { font: 600 18px/1.5 'Segoe UI', sans-serif; overflow-wrap: anywhere; }
+.revealed-answer p { color: #859389; font-size: 10px; }
+@media (max-width: 1000px) { .game-layout { grid-template-columns: 1fr; } .game-video { max-height: 48vh; } }
