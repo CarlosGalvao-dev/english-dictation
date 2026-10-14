@@ -5,23 +5,39 @@ const { promisify } = require('node:util');
 const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
 const { createServer } = require('node:http');
-const os = require('node:os');
-const { randomBytes } = require('node:crypto');
+const { createHash, randomBytes } = require('node:crypto');
 const ffprobePath = require('ffprobe-static').path;
 const ffmpegPath = require('ffmpeg-static');
 
 const execFileAsync = promisify(execFile);
-let mediaWorkDir;
 let mediaServer;
 let mediaServerUrl;
 let userSettingsPath;
+let processedVideoPath;
 let lastVideoDirectory = '';
+let userSettings = {};
+let settingsWriteQueue = Promise.resolve();
+let videoPreparationQueue = Promise.resolve();
 const mediaFiles = new Map();
+
+function persistUserSettings() {
+  if (!userSettingsPath) return Promise.resolve();
+  const serialized = JSON.stringify(userSettings, null, 2);
+  settingsWriteQueue = settingsWriteQueue.catch(() => {}).then(() => fs.writeFile(userSettingsPath, serialized, 'utf8'));
+  return settingsWriteQueue;
+}
+
+function preferenceInteger(value, fallback, minimum) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.round(parsed)) : fallback;
+}
 
 async function saveLastDirectory(directory) {
   lastVideoDirectory = directory;
+  userSettings.lastVideoDirectory = directory;
   try {
-    await fs.writeFile(userSettingsPath, JSON.stringify({ lastVideoDirectory }, null, 2), 'utf8');
+    await persistUserSettings();
   } catch (error) {
     console.error('Could not save the last video folder:', error);
   }
@@ -162,30 +178,59 @@ ipcMain.handle('dialog:video', async () => {
   };
 });
 
-ipcMain.handle('video:prepare', async (_event, filePath, videoInfo) => {
-  const extension = path.extname(filePath).toLowerCase();
-  const safeMp4 = ['.mp4', '.m4v', '.mov'].includes(extension)
-    && videoInfo.videoCodec === 'h264'
-    && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
-  const safeWebm = extension === '.webm' && ['vp8', 'vp9', 'av1'].includes(videoInfo.videoCodec);
-  if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false };
+ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
+  const operation = videoPreparationQueue.then(async () => {
+    const extension = path.extname(filePath).toLowerCase();
+    const safeMp4 = ['.mp4', '.m4v', '.mov'].includes(extension)
+      && videoInfo.videoCodec === 'h264'
+      && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
+    const safeWebm = extension === '.webm' && ['vp8', 'vp9', 'av1'].includes(videoInfo.videoCodec);
+    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false };
 
-  const outputPath = path.join(mediaWorkDir, `playback-${Date.now()}.mp4`);
-  const h264 = videoInfo.videoCodec === 'h264' && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
-  const args = ['-y', '-v', 'error', '-i', filePath, '-map', '0:v:0', '-map', '0:a:0?'];
-  if (h264) args.push('-c:v', 'copy');
-  else args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '25', '-pix_fmt', 'yuv420p');
-  args.push('-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', outputPath);
+    const source = path.resolve(filePath);
+    const sourceStats = await fs.stat(source);
+    const cacheKey = createHash('sha256').update(JSON.stringify({
+      source,
+      size: sourceStats.size,
+      modified: sourceStats.mtimeMs,
+      changed: sourceStats.ctimeMs,
+      videoCodec: videoInfo.videoCodec,
+      pixelFormat: videoInfo.pixelFormat,
+      format: videoInfo.format,
+    })).digest('hex');
+    try {
+      const cachedStats = await fs.stat(processedVideoPath);
+      if (userSettings.processedVideoCacheKey === cacheKey && cachedStats.size > 0) {
+        return { url: registerMediaFile(processedVideoPath), converted: true };
+      }
+    } catch { /* Cache file does not exist yet. */ }
 
-  await new Promise((resolve, reject) => {
-    const process = spawn(ffmpegPath, args, { windowsHide: true });
-    let errorText = '';
-    process.stderr.setEncoding('utf8');
-    process.stderr.on('data', chunk => { errorText += chunk; });
-    process.once('error', reject);
-    process.once('close', code => code === 0 ? resolve() : reject(new Error(errorText || `FFmpeg exited with code ${code}`)));
+    // Clear the cache key before FFmpeg overwrites the single persistent output.
+    userSettings.processedVideoCacheKey = null;
+    await persistUserSettings();
+    const outputPath = processedVideoPath;
+    const h264 = videoInfo.videoCodec === 'h264' && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
+    const args = ['-y', '-v', 'error', '-i', filePath, '-map', '0:v:0', '-map', '0:a:0?'];
+    if (h264) args.push('-c:v', 'copy');
+    else args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '25', '-pix_fmt', 'yuv420p');
+    args.push('-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', outputPath);
+
+    await new Promise((resolve, reject) => {
+      const process = spawn(ffmpegPath, args, { windowsHide: true });
+      let errorText = '';
+      process.stderr.setEncoding('utf8');
+      process.stderr.on('data', chunk => { errorText += chunk; });
+      process.once('error', reject);
+      process.once('close', code => code === 0 ? resolve() : reject(new Error(errorText || `FFmpeg exited with code ${code}`)));
+    });
+    const outputStats = await fs.stat(outputPath);
+    if (!outputStats.size) throw new Error('FFmpeg produced an empty playback cache file.');
+    userSettings.processedVideoCacheKey = cacheKey;
+    await persistUserSettings();
+    return { url: registerMediaFile(outputPath), converted: true };
   });
-  return { url: registerMediaFile(outputPath), converted: true };
+  videoPreparationQueue = operation.catch(() => {});
+  return operation;
 });
 
 ipcMain.handle('subtitle:extract', async (_event, filePath, streamIndex) => {
@@ -209,13 +254,34 @@ ipcMain.handle('subtitle:extract', async (_event, filePath, streamIndex) => {
   });
 });
 
+ipcMain.handle('settings:load-session', () => userSettings.sessionPreferences || null);
+ipcMain.handle('settings:save-session', async (_event, preferences) => {
+  const values = preferences && typeof preferences === 'object' ? preferences : {};
+  userSettings.sessionPreferences = {
+    interval: preferenceInteger(values.interval, 30, 1),
+    minimumWords: preferenceInteger(values.minimumWords, 5, 1),
+    maxCharacters: preferenceInteger(values.maxCharacters, 100, 20),
+    prefillFirstWord: values.prefillFirstWord === true,
+    subtitleMode: values.subtitleMode === 'off' ? 'off' : 'outside',
+  };
+  try {
+    await persistUserSettings();
+    return true;
+  } catch (error) {
+    console.error('Could not save session preferences:', error);
+    return false;
+  }
+});
+
 app.whenReady().then(async () => {
   userSettingsPath = path.join(app.getPath('userData'), 'settings.json');
   try {
     const settings = JSON.parse(await fs.readFile(userSettingsPath, 'utf8'));
-    if (typeof settings.lastVideoDirectory === 'string') lastVideoDirectory = settings.lastVideoDirectory;
+    if (settings && typeof settings === 'object' && !Array.isArray(settings)) userSettings = settings;
+    if (typeof userSettings.lastVideoDirectory === 'string') lastVideoDirectory = userSettings.lastVideoDirectory;
   } catch { /* First launch: no local preferences yet. */ }
-  mediaWorkDir = await fs.mkdtemp(path.join(os.tmpdir(), 'english-dictation-'));
+  processedVideoPath = path.join(app.getAppPath(), '.video-cache', 'processed-video.mp4');
+  await fs.mkdir(path.dirname(processedVideoPath), { recursive: true });
   startMediaServer();
   await new Promise(resolve => mediaServer.once('listening', resolve));
   createWindow();
@@ -230,5 +296,4 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   mediaServer?.close();
-  if (mediaWorkDir) void fs.rm(mediaWorkDir, { recursive: true, force: true });
 });
