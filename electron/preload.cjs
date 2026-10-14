@@ -4,4 +4,6 @@ contextBridge.exposeInMainWorld('desktop', {
   chooseVideo: () => ipcRenderer.invoke('dialog:video'),
   prepareVideo: (filePath, videoInfo) => ipcRenderer.invoke('video:prepare', filePath, videoInfo),
   extractSubtitle: (filePath, streamIndex) => ipcRenderer.invoke('subtitle:extract', filePath, streamIndex),
+  loadSessionPreferences: () => ipcRenderer.invoke('settings:load-session'),
+  saveSessionPreferences: preferences => ipcRenderer.invoke('settings:save-session', preferences),
 });

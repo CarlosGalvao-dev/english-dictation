@@ -6,6 +6,8 @@ declare global {
       chooseVideo: () => Promise<SelectedVideo | string | null>;
       prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<{ url: string; converted: boolean }>;
       extractSubtitle: (filePath: string, streamIndex: number) => Promise<SubtitleCue[]>;
+      loadSessionPreferences: () => Promise<SessionPreferences | null>;
+      saveSessionPreferences: (preferences: SessionPreferences) => Promise<boolean>;
     };
   }
 }
@@ -14,6 +16,13 @@ type SubtitleTrack = { index: number; codec: string; label: string; textSupporte
 type SubtitleCue = { start: number; end: number; text: string };
 type VideoInfo = { videoCodec: string; pixelFormat: string; format: string };
 type SelectedVideo = VideoInfo & { path: string; tracks: SubtitleTrack[] };
+type SessionPreferences = {
+  interval: number;
+  minimumWords: number;
+  maxCharacters: number;
+  prefillFirstWord: boolean;
+  subtitleMode: 'outside' | 'off';
+};
 
 function normalizeAnswer(text: string) {
   return text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]/gu, '');
@@ -37,6 +46,7 @@ export default function App() {
   const [interval, setInterval] = useState(30);
   const [maxCharacters, setMaxCharacters] = useState(100);
   const [prefillFirstWord, setPrefillFirstWord] = useState(false);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [sessionError, setSessionError] = useState('');
   const [inGame, setInGame] = useState(false);
   const [gameStartTime, setGameStartTime] = useState(0);
@@ -54,6 +64,37 @@ export default function App() {
   const wordInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const replayingPhaseRef = useRef(false);
   const lastFocusedWordRef = useRef(0);
+  const manualSeekPositionRef = useRef<number | null>(null);
+  const programmaticSeekTargetRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPreferences = window.desktop?.loadSessionPreferences;
+    if (!loadPreferences) {
+      setPreferencesLoaded(true);
+      return () => { mounted = false; };
+    }
+    void loadPreferences().then(preferences => {
+      if (!mounted) return;
+      if (preferences) {
+        setInterval(preferences.interval);
+        setMinimumWords(preferences.minimumWords);
+        setMaxCharacters(preferences.maxCharacters);
+        setPrefillFirstWord(preferences.prefillFirstWord);
+        setSubtitleMode(preferences.subtitleMode);
+      }
+      setPreferencesLoaded(true);
+    }).catch(error => {
+      console.error('Could not load local session preferences:', error);
+      if (mounted) setPreferencesLoaded(true);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!preferencesLoaded || !window.desktop?.saveSessionPreferences) return;
+    void window.desktop.saveSessionPreferences({ interval, minimumWords, maxCharacters, prefillFirstWord, subtitleMode });
+  }, [preferencesLoaded, interval, minimumWords, maxCharacters, prefillFirstWord, subtitleMode]);
 
   useEffect(() => {
     function updateFullscreenState() {
@@ -62,6 +103,29 @@ export default function App() {
     document.addEventListener('fullscreenchange', updateFullscreenState);
     return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
   }, []);
+
+  useEffect(() => {
+    function handleKeyboardShortcut(event: KeyboardEvent) {
+      if (!activeCue) return;
+      if (event.key === 'Enter' && event.shiftKey) {
+        event.preventDefault();
+        skipPhase();
+      }
+    }
+    function handleMouseSideButton(event: MouseEvent) {
+      if (!activeCue || (event.button !== 3 && event.button !== 4)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.button === 3) restartPhase();
+      else revealAnswer();
+    }
+    window.addEventListener('keydown', handleKeyboardShortcut);
+    window.addEventListener('auxclick', handleMouseSideButton, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyboardShortcut);
+      window.removeEventListener('auxclick', handleMouseSideButton, true);
+    };
+  }, [activeCue]);
 
   function focusLastWord(cue: SubtitleCue | null = activeCue) {
     if (!cue) return;
@@ -164,8 +228,38 @@ export default function App() {
   function onGameLoaded() {
     const player = gameVideoRef.current;
     if (!player) return;
+    programmaticSeekTargetRef.current = gameStartTime;
     player.currentTime = gameStartTime;
     void player.play().catch(() => setAnswerStatus('Click the video play button to start playback.'));
+  }
+
+  function findNextCueFrom(position: number) {
+    const targetTime = position + Math.max(1, interval);
+    const available = eligibleCues();
+    return available.find(cue => cue.start >= targetTime)
+      || available.find(cue => cue.start > position)
+      || null;
+  }
+
+  function onGameSeeked() {
+    const player = gameVideoRef.current;
+    if (!player) return;
+    const position = player.currentTime;
+    const programmaticTarget = programmaticSeekTargetRef.current;
+    if (programmaticTarget !== null && Math.abs(position - programmaticTarget) < 0.1) {
+      programmaticSeekTargetRef.current = null;
+      return;
+    }
+    programmaticSeekTargetRef.current = null;
+    setPlaybackTime(position);
+    setAnswerStatus('');
+    setFinished(false);
+    if (activeCue) {
+      manualSeekPositionRef.current = position;
+    } else {
+      manualSeekPositionRef.current = null;
+      setNextCue(findNextCueFrom(position));
+    }
   }
 
   function onGameTimeUpdate() {
@@ -202,13 +296,19 @@ export default function App() {
     setNextCue(next || null);
   }
 
+  function scheduleFollowingPosition(position: number) {
+    setNextCue(findNextCueFrom(position));
+    manualSeekPositionRef.current = null;
+  }
+
   function resumeAfterPhase(cue: SubtitleCue) {
     replayingPhaseRef.current = false;
     setActiveCue(null);
     setRevealed(false);
     setAnswerWords([]);
     setAnswerStatus('');
-    scheduleFollowingCue(cue);
+    if (manualSeekPositionRef.current !== null) scheduleFollowingPosition(manualSeekPositionRef.current);
+    else scheduleFollowingCue(cue);
     void gameVideoRef.current?.play();
   }
 
@@ -257,12 +357,15 @@ export default function App() {
     setAnswerStatus('');
     setRevealed(false);
     replayingPhaseRef.current = false;
-    scheduleFollowingCue(cue);
+    if (manualSeekPositionRef.current !== null) scheduleFollowingPosition(manualSeekPositionRef.current);
+    else scheduleFollowingCue(cue);
     void gameVideoRef.current?.play();
   }
 
   function restartPhase() {
     if (!activeCue || !gameVideoRef.current) return;
+    manualSeekPositionRef.current = null;
+    programmaticSeekTargetRef.current = activeCue.start;
     gameVideoRef.current.currentTime = activeCue.start;
     setRevealed(false);
     replayingPhaseRef.current = true;
@@ -284,6 +387,8 @@ export default function App() {
       return;
     }
     player.pause();
+    manualSeekPositionRef.current = null;
+    programmaticSeekTargetRef.current = next.start;
     player.currentTime = next.start;
     setActiveCue(null);
     setNextCue(next);
@@ -328,12 +433,26 @@ export default function App() {
           onFocus={() => { lastFocusedWordRef.current = thisIndex; }}
           readOnly={isPrefilled}
           onKeyDown={event => {
-            if (event.key === ' ' || event.key === 'Enter') {
+            const input = event.currentTarget;
+            if (event.key === 'ArrowLeft' && input.selectionStart === 0 && thisIndex > (prefillFirstWord ? 1 : 0)) {
               event.preventDefault();
-              if (isCorrect && thisIndex < expectedWords.length - 1) {
-                const nextIndex = thisIndex + 1;
-                lastFocusedWordRef.current = nextIndex;
-                wordInputRefs.current[nextIndex]?.focus();
+              const previous = wordInputRefs.current[thisIndex - 1];
+              if (previous) { previous.focus(); previous.setSelectionRange(previous.value.length, previous.value.length); }
+            } else if (event.key === 'ArrowRight' && input.selectionStart === input.value.length && thisIndex < expectedWords.length - 1) {
+              event.preventDefault();
+              const next = wordInputRefs.current[thisIndex + 1];
+              if (next) { next.focus(); next.setSelectionRange(0, 0); }
+            } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+              const nextIndex = thisIndex + (event.key === 'ArrowUp' ? -1 : 1);
+              const minIndex = prefillFirstWord ? 1 : 0;
+              if (nextIndex >= minIndex && nextIndex < expectedWords.length) {
+                event.preventDefault();
+                const next = wordInputRefs.current[nextIndex];
+                if (next) {
+                  next.focus();
+                  const position = Math.min(input.selectionStart ?? 0, next.value.length);
+                  next.setSelectionRange(position, position);
+                }
               }
             }
           }}
@@ -381,6 +500,7 @@ export default function App() {
                   preload="auto"
                   onLoadedMetadata={onGameLoaded}
                   onTimeUpdate={onGameTimeUpdate}
+                  onSeeked={onGameSeeked}
                   onEnded={() => { setFinished(true); setNextCue(null); replayingPhaseRef.current = false; }}
                 />
                 <button className="fullscreen-button" onClick={() => void toggleVideoFullscreen()} aria-label={isVideoFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
@@ -391,30 +511,19 @@ export default function App() {
                 </div>}
                 {!activeCue && subtitleMode === 'outside' && currentCaption && <div className="subtitle-overlay normal-caption">{currentCaption}</div>}
               </div>
+              <div className="phase-actions">
+                {activeCue && <button title="Back (Mouse Back button)" onClick={restartPhase}>↶ Back</button>}
+                {activeCue && <button title="Skip (Shift+Enter)" onClick={skipPhase}>Skip →</button>}
+                <button title="Next phase (no keyboard shortcut)" onClick={goToNextPhase}>Next phase</button>
+                {activeCue && !revealed && <button className="reveal-button" title="Show answer (Mouse Forward button)" onClick={revealAnswer}>Show answer</button>}
+                <button className="end-session-button" onClick={() => setInGame(false)}>End session</button>
+              </div>
+              {activeCue && !revealed && <p className="game-hint">Use the arrow keys to move between letters and words.</p>}
+              {answerStatus && <p className="answer-feedback">{answerStatus}</p>}
+              {!activeCue && sessionError && <p className="video-error">{sessionError}</p>}
               <div className="game-transport">
                 <span>{activeCue ? 'Current phase' : nextCue ? 'Next pause scheduled' : finished ? 'Session ended' : 'Continuous playback'}</span>
-                <button onClick={() => setInGame(false)}>End session</button>
               </div>
-            </section>
-            <section className="card answer-card">
-              <div className="card-heading"><div className="number">✎</div><div><h3>Your dictation</h3><p>Type the full sentence</p></div></div>
-              {activeCue ? (
-                <div className="phase-instructions">
-                  <div className="answer-mask">Type each word in the blanks over the video.</div>
-                  <p className="answer-feedback">Correct words turn green; incorrect words turn red.</p>
-                  {revealed && <div className="revealed-answer"><span>ANSWER</span><strong>{activeCue.text}</strong><p>The video remains paused until you choose an action.</p></div>}
-                  {answerStatus && <p className="answer-feedback">{answerStatus}</p>}
-                </div>
-              ) : (
-                <div className="waiting-card"><span className="waiting-dot"/><p>{finished ? 'There are no more lines to practice.' : 'Wait for the next dictation line.'}</p></div>
-              )}
-              <div className="phase-actions">
-                {activeCue && <button onClick={restartPhase}>↶ Back</button>}
-                {activeCue && <button onClick={skipPhase}>Skip →</button>}
-                <button onClick={goToNextPhase}>Next phase</button>
-                {activeCue && !revealed && <button className="reveal-button" onClick={revealAnswer}>Show answer</button>}
-              </div>
-              {!activeCue && sessionError && <p className="video-error">{sessionError}</p>}
             </section>
           </div>
         </section>

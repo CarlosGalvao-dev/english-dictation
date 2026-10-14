@@ -4,6 +4,7 @@ body { margin: 0; min-width: 900px; min-height: 100vh; background: radial-gradie
 button, input { font: inherit; }
 button { cursor: pointer; }
 .app-shell { max-width: 1240px; margin: 0 auto; padding: 28px 54px 20px; min-height: 100vh; display: flex; flex-direction: column; }
+.app-shell.game-shell { max-width: 1600px; padding-right: 4vw; padding-left: 4vw; }
 .topbar { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #26312a; padding-bottom: 22px; }
 .brand-mark { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #102014; background: #b4e5a6; font: 800 15px Manrope; letter-spacing: -1px; }
 h1,h2,h3,p { margin: 0; }
@@ -56,16 +57,16 @@ h3 { font: 650 14px 'Segoe UI', sans-serif; margin-bottom: 3px; }.card-heading p
 .start-button:disabled { cursor: not-allowed; opacity: .45; }.start-button span { font-size: 16px; line-height: 10px; }
 .privacy-note { color: #728074; font-size: 9px; text-align: center; margin-top: 11px; }
 footer { margin-top: auto; padding-top: 24px; display: flex; justify-content: space-between; color: #607064; font-size: 8px; letter-spacing: 1.2px; }
-.game-workspace { width: 100%; max-width: 1080px; margin: 38px auto; }
+.game-workspace { width: 100%; max-width: 1440px; margin: 38px auto; }
 .game-heading { margin-bottom: 22px; }
 .game-heading h2 { margin-top: 7px; }
-.game-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .8fr); gap: 17px; align-items: stretch; }
+.game-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 17px; align-items: stretch; }
 .game-player-card { padding: 14px; }
 .game-video-wrap { position: relative; overflow: hidden; background: #050706; border-radius: 10px; }
 .game-video-wrap:fullscreen { width: 100vw; height: 100vh; display: grid; place-items: center; border-radius: 0; }
 .game-video-wrap:fullscreen .game-video { width: 100%; height: 100%; max-height: none; aspect-ratio: auto; }
 .game-video-wrap:fullscreen .subtitle-overlay { bottom: 58px; }
-.game-video { display: block; width: 100%; max-height: 62vh; aspect-ratio: 16 / 9; object-fit: contain; }
+.game-video { display: block; width: 100%; max-height: 76vh; aspect-ratio: 16 / 9; object-fit: contain; }
 .fullscreen-button { position: absolute; z-index: 4; top: 12px; right: 12px; padding: 7px 10px; border: 1px solid #ffffff55; border-radius: 7px; background: #0009; color: #fff; font-size: 11px; }
 .subtitle-overlay { position: absolute; left: 7%; right: 7%; bottom: 42px; padding: 10px 14px; color: white; background: #000b; border-radius: 6px; text-align: center; font: 600 19px/1.5 'Segoe UI', sans-serif; text-shadow: 0 1px 2px #000; overflow-wrap: anywhere; }
 .input-overlay { line-height: 1.9; }
@@ -76,23 +77,13 @@ footer { margin-top: auto; padding-top: 24px; display: flex; justify-content: sp
 .inline-word.prefilled-word { color: #8ff099; background-image: repeating-linear-gradient(to right, #66e77b 0 .72ch, transparent .72ch 1ch); cursor: default; }
 .revealed-overlay { color: #c6f0bd; }
 .normal-caption { font-size: 15px; }
-.game-transport { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 11px 3px 0; color: #8d9b90; font-size: 10px; }
+.game-transport { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 11px 3px 0; color: #8d9b90; font-size: 10px; }
 .game-transport button, .back-to-setup { color: #bfd8c0; background: #1c291f; border: 1px solid #3a4b3b; border-radius: 7px; padding: 8px 11px; font-size: 10px; }
 .back-to-setup { margin-left: auto; }
-.answer-card { display: flex; flex-direction: column; }
-.answer-mask { min-height: 120px; display: flex; align-items: center; padding: 16px; border: 1px solid #39493b; border-radius: 9px; background: #131a15; color: #cbe9c5; font: 600 17px/1.7 'Cascadia Code', Consolas, monospace; overflow-wrap: anywhere; }
-.answer-input { width: 100%; min-height: 118px; resize: vertical; padding: 11px; border: 1px solid #455646; border-radius: 8px; outline: none; background: #111713; color: #eff5ef; font-size: 13px; line-height: 1.6; }
-.answer-input:focus { border-color: #9bc58e; }
 .answer-feedback { color: #f0bd9f; font-size: 10px; margin-top: 8px; }
-.phase-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: auto; padding-top: 16px; }
+.phase-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 13px 3px 0; }
 .phase-actions button { color: #c5d2c6; background: #1a241c; border: 1px solid #3a493b; border-radius: 7px; padding: 8px 10px; font-size: 10px; }
-.phase-actions .reveal-button { flex-basis: 100%; color: #172117; background: #b5e5a7; border-color: #b5e5a7; font-weight: 700; }
-.phase-instructions { flex: 1; }
-.phase-instructions .answer-mask { min-height: 130px; color: #b5c6b7; font: 500 12px/1.6 'Segoe UI', sans-serif; }
-.waiting-card { flex: 1; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #93a095; text-align: center; font-size: 12px; }
-.waiting-dot { width: 10px; height: 10px; border-radius: 50%; background: #b5e5a7; box-shadow: 0 0 18px #a9e29a88; }
-.revealed-answer { min-height: 220px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
-.revealed-answer span { color: #99b694; font-size: 9px; font-weight: 700; letter-spacing: 1.3px; }
-.revealed-answer strong { font: 600 18px/1.5 'Segoe UI', sans-serif; overflow-wrap: anywhere; }
-.revealed-answer p { color: #859389; font-size: 10px; }
-@media (max-width: 1000px) { .game-layout { grid-template-columns: 1fr; } .game-video { max-height: 48vh; } }
+.phase-actions .reveal-button { color: #172117; background: #b5e5a7; border-color: #b5e5a7; font-weight: 700; }
+.phase-actions .end-session-button { margin-left: auto; }
+.game-hint { color: #819084; font-size: 10px; padding: 7px 3px 0; }
+@media (max-width: 1000px) { .game-video { max-height: 65vh; } }
