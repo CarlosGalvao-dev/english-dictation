@@ -3,7 +3,7 @@ const path = require('node:path');
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs/promises');
-const { createReadStream } = require('node:fs');
+const { createReadStream, watch: watchFs } = require('node:fs');
 const { createServer } = require('node:http');
 const { createHash, randomBytes } = require('node:crypto');
 const ffprobePath = require('ffprobe-static').path;
@@ -14,6 +14,7 @@ let mediaServer;
 let mediaServerUrl;
 let userSettingsPath;
 let processedVideoPath;
+let cacheWatcher;
 let lastVideoDirectory = '';
 let userSettings = {};
 let settingsWriteQueue = Promise.resolve();
@@ -52,7 +53,15 @@ async function clearFavoritesIfCacheWasDeleted() {
   } catch { /* The processed cache was deleted. */ }
   if (cacheExists) return;
   userSettings.processedVideoCacheKey = null;
-  if (userSettings.favoriteSourceKey === cacheKey) clearSavedFavorites();
+  if (userSettings.favoriteSourceKey === cacheKey) {
+    const hadFavorites = savedFavorites().length > 0;
+    clearSavedFavorites(cacheKey);
+    if (hadFavorites) {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send('favorites:cleared');
+      }
+    }
+  }
   await persistUserSettings();
 }
 
@@ -335,6 +344,14 @@ app.whenReady().then(async () => {
   processedVideoPath = path.join(app.getAppPath(), '.video-cache', 'processed-video.mp4');
   await fs.mkdir(path.dirname(processedVideoPath), { recursive: true });
   await clearFavoritesIfCacheWasDeleted();
+  try {
+    cacheWatcher = watchFs(path.dirname(processedVideoPath), (_eventType, fileName) => {
+      if (fileName && fileName.toString() !== path.basename(processedVideoPath)) return;
+      void clearFavoritesIfCacheWasDeleted().catch(error => console.error('Could not clear favorites after cache deletion:', error));
+    });
+  } catch (error) {
+    console.error('Could not watch the video cache folder:', error);
+  }
   startMediaServer();
   await new Promise(resolve => mediaServer.once('listening', resolve));
   createWindow();
@@ -348,5 +365,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  cacheWatcher?.close();
   mediaServer?.close();
 });

@@ -9,4 +9,9 @@ contextBridge.exposeInMainWorld('desktop', {
   loadFavorites: () => ipcRenderer.invoke('favorites:list'),
   toggleFavorite: favorite => ipcRenderer.invoke('favorites:toggle', favorite),
   copyText: text => ipcRenderer.invoke('clipboard:write-text', text),
+  onFavoritesCleared: callback => {
+    const listener = () => callback();
+    ipcRenderer.on('favorites:cleared', listener);
+    return () => ipcRenderer.removeListener('favorites:cleared', listener);
+  },
 });

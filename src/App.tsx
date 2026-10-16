@@ -11,6 +11,7 @@ declare global {
       loadFavorites: () => Promise<FavoriteLine[]>;
       toggleFavorite: (favorite: FavoriteLine) => Promise<FavoriteLine[]>;
       copyText: (text: string) => Promise<boolean>;
+      onFavoritesCleared: (callback: () => void) => () => void;
     };
   }
 }
@@ -101,6 +102,11 @@ export default function App() {
     if (!preferencesLoaded || !window.desktop?.saveSessionPreferences) return;
     void window.desktop.saveSessionPreferences({ interval, minimumWords, maxCharacters, prefillFirstWord, subtitleMode });
   }, [preferencesLoaded, interval, minimumWords, maxCharacters, prefillFirstWord, subtitleMode]);
+
+  useEffect(() => window.desktop?.onFavoritesCleared(() => {
+    setFavorites([]);
+    setFavoritesStatus('Favorites cleared because the video cache was deleted.');
+  }), []);
 
   useEffect(() => {
     function updateFullscreenState() {
