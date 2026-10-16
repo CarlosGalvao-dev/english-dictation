@@ -6,4 +6,7 @@ contextBridge.exposeInMainWorld('desktop', {
   extractSubtitle: (filePath, streamIndex) => ipcRenderer.invoke('subtitle:extract', filePath, streamIndex),
   loadSessionPreferences: () => ipcRenderer.invoke('settings:load-session'),
   saveSessionPreferences: preferences => ipcRenderer.invoke('settings:save-session', preferences),
+  loadFavorites: () => ipcRenderer.invoke('favorites:list'),
+  toggleFavorite: favorite => ipcRenderer.invoke('favorites:toggle', favorite),
+  copyText: text => ipcRenderer.invoke('clipboard:write-text', text),
 });

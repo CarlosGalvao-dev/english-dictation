@@ -8,6 +8,9 @@ declare global {
       extractSubtitle: (filePath: string, streamIndex: number) => Promise<SubtitleCue[]>;
       loadSessionPreferences: () => Promise<SessionPreferences | null>;
       saveSessionPreferences: (preferences: SessionPreferences) => Promise<boolean>;
+      loadFavorites: () => Promise<FavoriteLine[]>;
+      toggleFavorite: (favorite: FavoriteLine) => Promise<FavoriteLine[]>;
+      copyText: (text: string) => Promise<boolean>;
     };
   }
 }
@@ -23,6 +26,7 @@ type SessionPreferences = {
   prefillFirstWord: boolean;
   subtitleMode: 'outside' | 'off';
 };
+type FavoriteLine = { start: number; text: string };
 
 function normalizeAnswer(text: string) {
   return text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]/gu, '');
@@ -47,6 +51,8 @@ export default function App() {
   const [maxCharacters, setMaxCharacters] = useState(100);
   const [prefillFirstWord, setPrefillFirstWord] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [favorites, setFavorites] = useState<FavoriteLine[]>([]);
+  const [favoritesStatus, setFavoritesStatus] = useState('');
   const [sessionError, setSessionError] = useState('');
   const [inGame, setInGame] = useState(false);
   const [gameStartTime, setGameStartTime] = useState(0);
@@ -171,6 +177,8 @@ export default function App() {
       const prepared = await window.desktop?.prepareVideo(selected.path, selected);
       if (prepared) {
         setVideo({ path: selected.path, url: prepared.url });
+        setFavorites(await window.desktop?.loadFavorites() || []);
+        setFavoritesStatus('');
         setVideoError('');
       }
     } catch (error) {
@@ -194,6 +202,23 @@ export default function App() {
       setSubtitleStatus('Could not read this subtitle track.');
     } finally {
       setSubtitleLoading(false);
+    }
+  }
+
+  async function toggleCurrentFavorite() {
+    if (!activeCue || !window.desktop) return;
+    const updated = await window.desktop.toggleFavorite({ start: activeCue.start, text: activeCue.text });
+    setFavorites(updated);
+    setFavoritesStatus('');
+  }
+
+  async function copyFavorites() {
+    if (!favorites.length || !window.desktop) return;
+    try {
+      await window.desktop.copyText(favorites.map(favorite => favorite.text).join('\n'));
+      setFavoritesStatus('Favorites copied to clipboard.');
+    } catch {
+      setFavoritesStatus('Could not copy favorites.');
     }
   }
 
@@ -516,8 +541,22 @@ export default function App() {
                 {activeCue && <button title="Skip (Shift+Enter)" onClick={skipPhase}>Skip →</button>}
                 <button title="Next phase (no keyboard shortcut)" onClick={goToNextPhase}>Next phase</button>
                 {activeCue && !revealed && <button className="reveal-button" title="Show answer (Mouse Forward button)" onClick={revealAnswer}>Show answer</button>}
+                {activeCue && <button title="Save or remove this subtitle from favorites" onClick={() => void toggleCurrentFavorite()}>
+                  {favorites.some(favorite => favorite.start === activeCue.start && favorite.text === activeCue.text) ? '★ Favorited' : '☆ Favorite'}
+                </button>}
                 <button className="end-session-button" onClick={() => setInGame(false)}>End session</button>
               </div>
+              <section className="favorites-panel" aria-label="Favorite subtitles">
+                <div className="favorites-heading"><strong>Favorites ({favorites.length})</strong><button onClick={() => void copyFavorites()} disabled={!favorites.length}>Copy favorites</button></div>
+                <textarea
+                  className="favorites-textarea"
+                  aria-label="Saved favorite subtitles"
+                  value={favorites.map(favorite => favorite.text).join('\n')}
+                  placeholder="Favorite subtitles from this video will appear here."
+                  readOnly
+                />
+                {favoritesStatus && <p className="game-hint">{favoritesStatus}</p>}
+              </section>
               {activeCue && !revealed && <p className="game-hint">Use the arrow keys to move between letters and words.</p>}
               {answerStatus && <p className="answer-feedback">{answerStatus}</p>}
               {!activeCue && sessionError && <p className="video-error">{sessionError}</p>}

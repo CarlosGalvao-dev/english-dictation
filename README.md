@@ -14,6 +14,8 @@ During a phase, **Back** replays the current line without clearing typed words a
 
 Seeking manually in the video recalculates the next eligible exercise from the new position, using the configured interval. If a phase is already active, it remains active; when you resume or skip it, the next exercise is scheduled from the seek position.
 
+During a phase, click **Favorite** to save its subtitle locally. The favorites panel below the phase controls lists saved lines and **Copy favorites** copies them as newline-separated text. Favorites are tied to the current video and are cleared when its processed cache is overwritten or deleted.
+
 In the session settings, **Fill in the first word** displays the first word as correct and locks it against editing. Subtitles can be visible outside exercises or turned off; the line used in an exercise remains hidden.
 
 ## Planned improvement
@@ -40,7 +42,7 @@ The project uses Electron, React, TypeScript, and Vite. FFmpeg and FFprobe are p
 
 ## Privacy and storage
 
-Videos, subtitles, preferences, and progress stay on the computer; there is no database and no media is sent to a remote service. The app stores the last selected video folder, session preferences, and the source identity for the cache locally in `settings.json` inside Electron's user data directory and restores those preferences on the next launch. The cache folder is ignored by Git. Answers and progress are not saved.
+Videos, subtitles, preferences, favorites, and progress stay on the computer; there is no database and no media is sent to a remote service. The app stores the last selected video folder, session preferences, favorite lines, and the source identity for the cache locally in `settings.json` inside Electron's user data directory and restores them when appropriate on the next launch. Favorites are cleared when the associated cache is deleted or replaced. The cache folder is ignored by Git. Answers and progress are not saved.
 
 ## Product documentation
 

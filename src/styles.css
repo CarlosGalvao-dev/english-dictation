@@ -86,4 +86,9 @@ footer { margin-top: auto; padding-top: 24px; display: flex; justify-content: sp
 .phase-actions .reveal-button { color: #172117; background: #b5e5a7; border-color: #b5e5a7; font-weight: 700; }
 .phase-actions .end-session-button { margin-left: auto; }
 .game-hint { color: #819084; font-size: 10px; padding: 7px 3px 0; }
+.favorites-panel { margin-top: 14px; padding-top: 12px; border-top: 1px solid #2f3a31; }
+.favorites-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; color: #dce5dd; font-size: 11px; }
+.favorites-heading button { color: #c5d2c6; background: #1a241c; border: 1px solid #3a493b; border-radius: 7px; padding: 7px 10px; font-size: 10px; }
+.favorites-heading button:disabled { opacity: .45; cursor: not-allowed; }
+.favorites-textarea { display: block; width: 100%; min-height: 76px; max-height: 190px; resize: vertical; padding: 10px; border: 1px solid #354239; border-radius: 8px; background: #131a15; color: #dce5dd; font: 12px/1.55 'Segoe UI', sans-serif; }
 @media (max-width: 1000px) { .game-video { max-height: 65vh; } }

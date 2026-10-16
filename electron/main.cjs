@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, clipboard } = require('electron');
 const path = require('node:path');
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
@@ -31,6 +31,29 @@ function preferenceInteger(value, fallback, minimum) {
   if (value === null || value === undefined || value === '') return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(minimum, Math.round(parsed)) : fallback;
+}
+
+function savedFavorites() {
+  return Array.isArray(userSettings.favorites) ? userSettings.favorites : [];
+}
+
+function clearSavedFavorites(sourceKey = null) {
+  userSettings.favorites = [];
+  userSettings.favoriteSourceKey = sourceKey;
+}
+
+async function clearFavoritesIfCacheWasDeleted() {
+  const cacheKey = userSettings.processedVideoCacheKey;
+  if (!cacheKey) return;
+  let cacheExists = false;
+  try {
+    const stats = await fs.stat(processedVideoPath);
+    cacheExists = stats.size > 0;
+  } catch { /* The processed cache was deleted. */ }
+  if (cacheExists) return;
+  userSettings.processedVideoCacheKey = null;
+  if (userSettings.favoriteSourceKey === cacheKey) clearSavedFavorites();
+  await persistUserSettings();
 }
 
 async function saveLastDirectory(directory) {
@@ -181,12 +204,6 @@ ipcMain.handle('dialog:video', async () => {
 ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
   const operation = videoPreparationQueue.then(async () => {
     const extension = path.extname(filePath).toLowerCase();
-    const safeMp4 = ['.mp4', '.m4v', '.mov'].includes(extension)
-      && videoInfo.videoCodec === 'h264'
-      && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
-    const safeWebm = extension === '.webm' && ['vp8', 'vp9', 'av1'].includes(videoInfo.videoCodec);
-    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false };
-
     const source = path.resolve(filePath);
     const sourceStats = await fs.stat(source);
     const cacheKey = createHash('sha256').update(JSON.stringify({
@@ -198,6 +215,16 @@ ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
       pixelFormat: videoInfo.pixelFormat,
       format: videoInfo.format,
     })).digest('hex');
+    if (userSettings.favoriteSourceKey !== cacheKey) {
+      clearSavedFavorites(cacheKey);
+      await persistUserSettings();
+    }
+    const safeMp4 = ['.mp4', '.m4v', '.mov'].includes(extension)
+      && videoInfo.videoCodec === 'h264'
+      && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
+    const safeWebm = extension === '.webm' && ['vp8', 'vp9', 'av1'].includes(videoInfo.videoCodec);
+    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false };
+
     try {
       const cachedStats = await fs.stat(processedVideoPath);
       if (userSettings.processedVideoCacheKey === cacheKey && cachedStats.size > 0) {
@@ -205,7 +232,8 @@ ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
       }
     } catch { /* Cache file does not exist yet. */ }
 
-    // Clear the cache key before FFmpeg overwrites the single persistent output.
+    // Replacing or regenerating the cached video also clears its favorite lines.
+    clearSavedFavorites(cacheKey);
     userSettings.processedVideoCacheKey = null;
     await persistUserSettings();
     const outputPath = processedVideoPath;
@@ -273,6 +301,30 @@ ipcMain.handle('settings:save-session', async (_event, preferences) => {
   }
 });
 
+ipcMain.handle('favorites:list', async () => {
+  await clearFavoritesIfCacheWasDeleted();
+  return savedFavorites();
+});
+
+ipcMain.handle('favorites:toggle', async (_event, favorite) => {
+  await clearFavoritesIfCacheWasDeleted();
+  if (!userSettings.favoriteSourceKey || typeof favorite?.text !== 'string') return savedFavorites();
+  const item = { start: Number(favorite.start), text: favorite.text.trim() };
+  if (!Number.isFinite(item.start) || !item.text) return savedFavorites();
+  const favorites = savedFavorites();
+  const existingIndex = favorites.findIndex(saved => saved.start === item.start && saved.text === item.text);
+  if (existingIndex >= 0) favorites.splice(existingIndex, 1);
+  else favorites.push(item);
+  userSettings.favorites = favorites;
+  await persistUserSettings();
+  return savedFavorites();
+});
+
+ipcMain.handle('clipboard:write-text', (_event, text) => {
+  clipboard.writeText(String(text || ''));
+  return true;
+});
+
 app.whenReady().then(async () => {
   userSettingsPath = path.join(app.getPath('userData'), 'settings.json');
   try {
@@ -282,6 +334,7 @@ app.whenReady().then(async () => {
   } catch { /* First launch: no local preferences yet. */ }
   processedVideoPath = path.join(app.getAppPath(), '.video-cache', 'processed-video.mp4');
   await fs.mkdir(path.dirname(processedVideoPath), { recursive: true });
+  await clearFavoritesIfCacheWasDeleted();
   startMediaServer();
   await new Promise(resolve => mediaServer.once('listening', resolve));
   createWindow();
