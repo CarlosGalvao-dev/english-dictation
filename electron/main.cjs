@@ -157,9 +157,9 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1240,
     height: 840,
-    minWidth: 980,
+    minWidth: 740,
     minHeight: 680,
-    backgroundColor: '#101512',
+    backgroundColor: '#111820',
     title: 'English Dictation',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -172,18 +172,9 @@ function createWindow() {
   else window.loadFile(path.join(__dirname, '../dist/index.html'));
 }
 
-ipcMain.handle('dialog:video', async () => {
-  const options = {
-    properties: ['openFile'],
-    filters: [{ name: 'Videos', extensions: ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'] }],
-  };
-  if (lastVideoDirectory) options.defaultPath = lastVideoDirectory;
-  const result = await dialog.showOpenDialog(options);
-  if (result.canceled) return null;
-  const filePath = result.filePaths[0];
-  await saveLastDirectory(path.dirname(filePath));
+async function inspectVideo(filePath) {
   const { stdout } = await execFileAsync(ffprobePath, [
-    '-v', 'error', '-show_entries', 'stream=index,codec_name,codec_type,pix_fmt:stream_tags=language,title:format=format_name',
+    '-v', 'error', '-show_entries', 'stream=index,codec_name,codec_type,pix_fmt:stream_tags=language,title:format=format_name,duration',
     '-of', 'json', filePath,
   ], { maxBuffer: 8 * 1024 * 1024 });
   const probe = JSON.parse(stdout);
@@ -207,10 +198,38 @@ ipcMain.handle('dialog:video', async () => {
     videoCodec: videoStream?.codec_name || 'unknown',
     pixelFormat: videoStream?.pix_fmt || '',
     format: probe.format?.format_name || '',
+    duration: Number(probe.format?.duration) || 0,
   };
+}
+
+ipcMain.handle('dialog:video', async () => {
+  const options = {
+    properties: ['openFile'],
+    filters: [{ name: 'Videos', extensions: ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'] }],
+  };
+  if (lastVideoDirectory) options.defaultPath = lastVideoDirectory;
+  const result = await dialog.showOpenDialog(options);
+  if (result.canceled) return null;
+  const filePath = result.filePaths[0];
+  await saveLastDirectory(path.dirname(filePath));
+  const video = await inspectVideo(filePath);
+  userSettings.lastVideoPath = filePath;
+  await persistUserSettings();
+  return video;
 });
 
-ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
+ipcMain.handle('video:restore-last', async () => {
+  const filePath = userSettings.lastVideoPath;
+  if (!filePath) return null;
+  try {
+    await fs.access(filePath);
+  } catch {
+    throw new Error('The last video could not be found. Reconnect its drive or choose the file again.');
+  }
+  return inspectVideo(filePath);
+});
+
+ipcMain.handle('video:prepare', (event, filePath, videoInfo) => {
   const operation = videoPreparationQueue.then(async () => {
     const extension = path.extname(filePath).toLowerCase();
     const source = path.resolve(filePath);
@@ -224,6 +243,15 @@ ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
       pixelFormat: videoInfo.pixelFormat,
       format: videoInfo.format,
     })).digest('hex');
+    const resumePosition = userSettings.playbackSourceKey === cacheKey
+      ? Math.max(0, Number(userSettings.playbackPosition) || 0)
+      : 0;
+    const savedSubtitleChoice = userSettings.subtitleSourceKey === cacheKey ? userSettings.subtitleChoice || null : null;
+    if (userSettings.playbackSourceKey !== cacheKey) {
+      userSettings.playbackSourceKey = cacheKey;
+      userSettings.playbackPosition = 0;
+      await persistUserSettings();
+    }
     if (userSettings.favoriteSourceKey !== cacheKey) {
       clearSavedFavorites(cacheKey);
       await persistUserSettings();
@@ -232,12 +260,12 @@ ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
       && videoInfo.videoCodec === 'h264'
       && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
     const safeWebm = extension === '.webm' && ['vp8', 'vp9', 'av1'].includes(videoInfo.videoCodec);
-    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false };
+    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
 
     try {
       const cachedStats = await fs.stat(processedVideoPath);
       if (userSettings.processedVideoCacheKey === cacheKey && cachedStats.size > 0) {
-        return { url: registerMediaFile(processedVideoPath), converted: true };
+        return { url: registerMediaFile(processedVideoPath), converted: true, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
       }
     } catch { /* Cache file does not exist yet. */ }
 
@@ -250,13 +278,33 @@ ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
     const args = ['-y', '-v', 'error', '-i', filePath, '-map', '0:v:0', '-map', '0:a:0?'];
     if (h264) args.push('-c:v', 'copy');
     else args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '25', '-pix_fmt', 'yuv420p');
-    args.push('-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', outputPath);
+    args.push('-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath);
 
     await new Promise((resolve, reject) => {
       const process = spawn(ffmpegPath, args, { windowsHide: true });
       let errorText = '';
+      let progressBuffer = '';
       process.stderr.setEncoding('utf8');
       process.stderr.on('data', chunk => { errorText += chunk; });
+      process.stdout.setEncoding('utf8');
+      process.stdout.on('data', chunk => {
+        progressBuffer += chunk;
+        const lines = progressBuffer.split(/\r?\n/);
+        progressBuffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line === 'progress=end') {
+            if (!event.sender.isDestroyed()) event.sender.send('video:progress', { percent: 100 });
+            continue;
+          }
+          if (!line.startsWith('out_time_ms=')) continue;
+          const outputTime = Number(line.slice('out_time_ms='.length));
+          const duration = Number(videoInfo.duration);
+          const percent = Number.isFinite(outputTime) && duration > 0
+            ? Math.max(0, Math.min(100, outputTime / (duration * 1_000_000) * 100))
+            : null;
+          if (!event.sender.isDestroyed()) event.sender.send('video:progress', { percent });
+        }
+      });
       process.once('error', reject);
       process.once('close', code => code === 0 ? resolve() : reject(new Error(errorText || `FFmpeg exited with code ${code}`)));
     });
@@ -264,7 +312,7 @@ ipcMain.handle('video:prepare', (_event, filePath, videoInfo) => {
     if (!outputStats.size) throw new Error('FFmpeg produced an empty playback cache file.');
     userSettings.processedVideoCacheKey = cacheKey;
     await persistUserSettings();
-    return { url: registerMediaFile(outputPath), converted: true };
+    return { url: registerMediaFile(outputPath), converted: true, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
   });
   videoPreparationQueue = operation.catch(() => {});
   return operation;
@@ -291,6 +339,44 @@ ipcMain.handle('subtitle:extract', async (_event, filePath, streamIndex) => {
   });
 });
 
+function parseSrt(text) {
+  const toSeconds = value => {
+    const match = value.match(/(?:(\d+):)?(\d{2}):(\d{2})[,.](\d{3})/);
+    if (!match) return NaN;
+    return Number(match[1] || 0) * 3600 + Number(match[2]) * 60 + Number(match[3]) + Number(match[4]) / 1000;
+  };
+  return text.replace(/^\uFEFF/, '').replace(/\r/g, '').trim().split(/\n\s*\n/).flatMap(block => {
+    const lines = block.split('\n');
+    const timeLineIndex = lines.findIndex(line => line.includes('-->'));
+    if (timeLineIndex < 0) return [];
+    const match = lines[timeLineIndex].match(/((?:\d+:)?\d{2}:\d{2}[,.]\d{3})\s+-->\s+((?:\d+:)?\d{2}:\d{2}[,.]\d{3})/);
+    if (!match) return [];
+    const start = toSeconds(match[1]);
+    const end = toSeconds(match[2]);
+    const cueText = lines.slice(timeLineIndex + 1).join(' ').replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').trim();
+    return cueText && Number.isFinite(start) && Number.isFinite(end) ? [{ start, end, text: cueText }] : [];
+  });
+}
+
+async function loadExternalSubtitle(filePath) {
+  if (path.extname(filePath).toLowerCase() !== '.srt') throw new Error('Choose an .srt subtitle file.');
+  const content = await fs.readFile(filePath, 'utf8');
+  const cues = parseSrt(content);
+  if (!cues.length) throw new Error('No valid subtitle lines were found in this .srt file.');
+  return { path: filePath, cues };
+}
+
+ipcMain.handle('dialog:external-subtitle', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'SubRip subtitles', extensions: ['srt'] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  return loadExternalSubtitle(result.filePaths[0]);
+});
+
+ipcMain.handle('subtitle:load-external', (_event, filePath) => loadExternalSubtitle(String(filePath || '')));
+
 ipcMain.handle('settings:load-session', () => userSettings.sessionPreferences || null);
 ipcMain.handle('settings:save-session', async (_event, preferences) => {
   const values = preferences && typeof preferences === 'object' ? preferences : {};
@@ -308,6 +394,64 @@ ipcMain.handle('settings:save-session', async (_event, preferences) => {
     console.error('Could not save session preferences:', error);
     return false;
   }
+});
+
+const defaultKeyboardShortcuts = {
+  restart: 'Mouse Back',
+  skip: 'Shift+Enter',
+  next: '',
+  reveal: 'Mouse Forward',
+  favorite: '',
+};
+const previousDefaultKeyboardShortcuts = {
+  restart: 'Alt+ArrowLeft',
+  skip: 'Shift+Enter',
+  next: 'Alt+ArrowRight',
+  reveal: 'Alt+Enter',
+  favorite: '',
+};
+ipcMain.handle('settings:load-shortcuts', async () => {
+  if (userSettings.keyboardShortcutsVersion !== 2) {
+    const saved = userSettings.keyboardShortcuts;
+    const hasPreviousDefaults = !saved || Object.keys(previousDefaultKeyboardShortcuts).every(key => saved[key] === previousDefaultKeyboardShortcuts[key]);
+    if (hasPreviousDefaults) userSettings.keyboardShortcuts = { ...defaultKeyboardShortcuts };
+    userSettings.keyboardShortcutsVersion = 2;
+    await persistUserSettings();
+  }
+  return userSettings.keyboardShortcuts || null;
+});
+ipcMain.handle('settings:save-shortcuts', async (_event, shortcuts) => {
+  const values = shortcuts && typeof shortcuts === 'object' ? shortcuts : {};
+  userSettings.keyboardShortcuts = Object.fromEntries(Object.keys(defaultKeyboardShortcuts).map(key => [
+    key,
+    typeof values[key] === 'string' && values[key].length <= 40 ? values[key] : defaultKeyboardShortcuts[key],
+  ]));
+  userSettings.keyboardShortcutsVersion = 2;
+  try { await persistUserSettings(); return true; }
+  catch (error) { console.error('Could not save keyboard shortcuts:', error); return false; }
+});
+
+ipcMain.on('video:save-position', (_event, playbackKey, position) => {
+  const value = Number(position);
+  if (playbackKey !== userSettings.playbackSourceKey || !Number.isFinite(value) || value < 0) return;
+  userSettings.playbackPosition = value;
+  void persistUserSettings().catch(error => console.error('Could not save playback position:', error));
+});
+
+ipcMain.handle('settings:save-subtitle', async (_event, playbackKey, choice) => {
+  if (playbackKey !== userSettings.playbackSourceKey) return false;
+  let savedChoice = null;
+  if (choice?.kind === 'internal' && Number.isInteger(Number(choice.streamIndex)) && Number(choice.streamIndex) >= 0) {
+    savedChoice = { kind: 'internal', streamIndex: Number(choice.streamIndex) };
+  } else if (choice?.kind === 'external' && typeof choice.path === 'string' && path.extname(choice.path).toLowerCase() === '.srt') {
+    savedChoice = { kind: 'external', path: choice.path };
+  } else if (choice !== null) {
+    return false;
+  }
+  userSettings.subtitleSourceKey = playbackKey;
+  userSettings.subtitleChoice = savedChoice;
+  try { await persistUserSettings(); return true; }
+  catch (error) { console.error('Could not save subtitle choice:', error); return false; }
 });
 
 ipcMain.handle('favorites:list', async () => {

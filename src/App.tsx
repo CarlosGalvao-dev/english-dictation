@@ -1,13 +1,31 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 
+type ShortcutAction = 'restart' | 'skip' | 'next' | 'reveal' | 'favorite';
+type KeyboardShortcuts = Record<ShortcutAction, string>;
+const defaultShortcuts: KeyboardShortcuts = {
+  restart: 'Mouse Back',
+  skip: 'Shift+Enter',
+  next: '',
+  reveal: 'Mouse Forward',
+  favorite: '',
+};
+
 declare global {
   interface Window {
     desktop?: {
       chooseVideo: () => Promise<SelectedVideo | string | null>;
-      prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<{ url: string; converted: boolean }>;
+      restoreLastVideo: () => Promise<SelectedVideo | null>;
+      prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<{ url: string; converted: boolean; playbackKey: string; resumePosition: number; savedSubtitleChoice: SubtitleChoice | null }>;
+      savePlaybackPosition: (playbackKey: string, position: number) => void;
       extractSubtitle: (filePath: string, streamIndex: number) => Promise<SubtitleCue[]>;
+      chooseExternalSubtitle: () => Promise<{ path: string; cues: SubtitleCue[] } | null>;
+      loadExternalSubtitle: (filePath: string) => Promise<{ path: string; cues: SubtitleCue[] }>;
+      saveSubtitleChoice: (playbackKey: string, choice: SubtitleChoice | null) => Promise<boolean>;
       loadSessionPreferences: () => Promise<SessionPreferences | null>;
       saveSessionPreferences: (preferences: SessionPreferences) => Promise<boolean>;
+      loadKeyboardShortcuts: () => Promise<KeyboardShortcuts | null>;
+      saveKeyboardShortcuts: (shortcuts: KeyboardShortcuts) => Promise<boolean>;
+      onVideoProgress: (callback: (progress: { percent: number | null }) => void) => () => void;
       loadFavorites: () => Promise<FavoriteLine[]>;
       toggleFavorite: (favorite: FavoriteLine) => Promise<FavoriteLine[]>;
       copyText: (text: string) => Promise<boolean>;
@@ -18,8 +36,9 @@ declare global {
 
 type SubtitleTrack = { index: number; codec: string; label: string; textSupported: boolean };
 type SubtitleCue = { start: number; end: number; text: string };
-type VideoInfo = { videoCodec: string; pixelFormat: string; format: string };
+type VideoInfo = { videoCodec: string; pixelFormat: string; format: string; duration?: number };
 type SelectedVideo = VideoInfo & { path: string; tracks: SubtitleTrack[] };
+type SubtitleChoice = { kind: 'internal'; streamIndex: number } | { kind: 'external'; path: string };
 type SessionPreferences = {
   interval: number;
   minimumWords: number;
@@ -40,9 +59,13 @@ function wordCount(text: string) {
 export default function App() {
   const [video, setVideo] = useState<{ path: string; url: string } | null>(null);
   const [videoError, setVideoError] = useState('');
-  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [videoProgress, setVideoProgress] = useState<number | null>(0);
+  const [playbackKey, setPlaybackKey] = useState('');
+  const [resumePosition, setResumePosition] = useState(0);
   const [tracks, setTracks] = useState<SubtitleTrack[]>([]);
   const [selectedTrack, setSelectedTrack] = useState('');
+  const [externalSubtitleName, setExternalSubtitleName] = useState('');
   const [subtitleStatus, setSubtitleStatus] = useState('Internal subtitle tracks will appear here');
   const [subtitleLoading, setSubtitleLoading] = useState(false);
   const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
@@ -52,6 +75,11 @@ export default function App() {
   const [maxCharacters, setMaxCharacters] = useState(100);
   const [prefillFirstWord, setPrefillFirstWord] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [keyboardShortcuts, setKeyboardShortcuts] = useState<KeyboardShortcuts>(defaultShortcuts);
+  const [shortcutsLoaded, setShortcutsLoaded] = useState(false);
+  const [showShortcutSettings, setShowShortcutSettings] = useState(false);
+  const [capturingShortcut, setCapturingShortcut] = useState<ShortcutAction | null>(null);
+  const [shortcutError, setShortcutError] = useState('');
   const [favorites, setFavorites] = useState<FavoriteLine[]>([]);
   const [favoritesStatus, setFavoritesStatus] = useState('');
   const [sessionError, setSessionError] = useState('');
@@ -73,6 +101,27 @@ export default function App() {
   const lastFocusedWordRef = useRef(0);
   const manualSeekPositionRef = useRef<number | null>(null);
   const programmaticSeekTargetRef = useRef<number | null>(null);
+  const lastPositionSaveRef = useRef({ at: 0, position: -1, playbackKey: '' });
+
+  function savePlaybackPosition(position: number, force = false) {
+    if (!playbackKey || !window.desktop?.savePlaybackPosition || !Number.isFinite(position)) return;
+    const now = Date.now();
+    const last = lastPositionSaveRef.current;
+    if (!force && last.playbackKey === playbackKey && (now - last.at < 2500 || Math.abs(position - last.position) < 1)) return;
+    lastPositionSaveRef.current = { at: now, position, playbackKey };
+    setResumePosition(position);
+    window.desktop.savePlaybackPosition(playbackKey, position);
+  }
+
+  function formatVideoTime(seconds: number) {
+    const wholeSeconds = Math.floor(Math.max(0, seconds));
+    const hours = Math.floor(wholeSeconds / 3600);
+    const minutes = Math.floor((wholeSeconds % 3600) / 60);
+    const remainingSeconds = wholeSeconds % 60;
+    return hours > 0
+      ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
+      : `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -99,6 +148,39 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const restore = window.desktop?.restoreLastVideo;
+    if (!restore) { setVideoLoading(false); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const selected = await restore();
+        if (selected && !cancelled) await loadSelectedVideo(selected);
+      } catch (error) {
+        if (!cancelled) setVideoError(error instanceof Error ? error.message : 'Could not restore the previous video.');
+      } finally {
+        if (!cancelled) setVideoLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const load = window.desktop?.loadKeyboardShortcuts;
+    if (!load) { setShortcutsLoaded(true); return; }
+    void load().then(saved => {
+      if (saved) setKeyboardShortcuts({ ...defaultShortcuts, ...saved });
+    }).catch(error => console.error('Could not load keyboard shortcuts:', error))
+      .finally(() => setShortcutsLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    if (!shortcutsLoaded || !window.desktop?.saveKeyboardShortcuts) return;
+    void window.desktop.saveKeyboardShortcuts(keyboardShortcuts);
+  }, [shortcutsLoaded, keyboardShortcuts]);
+
+  useEffect(() => window.desktop?.onVideoProgress(progress => setVideoProgress(progress.percent)), []);
+
+  useEffect(() => {
     if (!preferencesLoaded || !window.desktop?.saveSessionPreferences) return;
     void window.desktop.saveSessionPreferences({ interval, minimumWords, maxCharacters, prefillFirstWord, subtitleMode });
   }, [preferencesLoaded, interval, minimumWords, maxCharacters, prefillFirstWord, subtitleMode]);
@@ -118,18 +200,37 @@ export default function App() {
 
   useEffect(() => {
     function handleKeyboardShortcut(event: KeyboardEvent) {
-      if (!activeCue) return;
-      if (event.key === 'Enter' && event.shiftKey) {
-        event.preventDefault();
-        skipPhase();
-      }
+      if (!activeCue || showShortcutSettings) return;
+      const shortcut = shortcutForEvent(event);
+      const action = (Object.keys(keyboardShortcuts) as ShortcutAction[])
+        .find(key => keyboardShortcuts[key] && keyboardShortcuts[key] === shortcut);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'restart') restartPhase();
+      else if (action === 'skip') skipPhase();
+      else if (action === 'next') goToNextPhase();
+      else if (action === 'reveal') revealAnswer();
+      else if (action === 'favorite') void toggleCurrentFavorite();
     }
     function handleMouseSideButton(event: MouseEvent) {
-      if (!activeCue || (event.button !== 3 && event.button !== 4)) return;
+      if (event.button !== 3 && event.button !== 4) return;
+      const mouseShortcut = event.button === 3 ? 'Mouse Back' : 'Mouse Forward';
+      if (showShortcutSettings && capturingShortcut) {
+        event.preventDefault();
+        event.stopPropagation();
+        assignShortcut(capturingShortcut, mouseShortcut);
+        return;
+      }
+      if (!activeCue || showShortcutSettings) return;
+      const action = (Object.keys(keyboardShortcuts) as ShortcutAction[]).find(key => keyboardShortcuts[key] === mouseShortcut);
+      if (!action) return;
       event.preventDefault();
       event.stopPropagation();
-      if (event.button === 3) restartPhase();
-      else revealAnswer();
+      if (action === 'restart') restartPhase();
+      else if (action === 'skip') skipPhase();
+      else if (action === 'next') goToNextPhase();
+      else if (action === 'reveal') revealAnswer();
+      else if (action === 'favorite') void toggleCurrentFavorite();
     }
     window.addEventListener('keydown', handleKeyboardShortcut);
     window.addEventListener('auxclick', handleMouseSideButton, true);
@@ -137,7 +238,37 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyboardShortcut);
       window.removeEventListener('auxclick', handleMouseSideButton, true);
     };
-  }, [activeCue]);
+  }, [activeCue, capturingShortcut, keyboardShortcuts, showShortcutSettings]);
+
+  function shortcutForEvent(event: Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>) {
+    const modifiers = [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta'].filter(Boolean);
+    const key = event.key === ' ' ? 'Space' : event.key.length === 1 ? event.key.toUpperCase() : event.key;
+    return [...modifiers, key].join('+');
+  }
+
+  function captureShortcut(action: ShortcutAction, event: React.KeyboardEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    if (event.key === 'Escape') { setCapturingShortcut(null); setShortcutError(''); return; }
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return;
+    const shortcut = shortcutForEvent(event);
+    if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+      setShortcutError('Add Ctrl, Alt, Shift, or Meta so the shortcut does not interrupt typing.');
+      return;
+    }
+    assignShortcut(action, shortcut);
+  }
+
+  function assignShortcut(action: ShortcutAction, shortcut: string) {
+    const conflict = (Object.keys(keyboardShortcuts) as ShortcutAction[]).find(key => key !== action && keyboardShortcuts[key] === shortcut);
+    if (conflict) { setShortcutError('That shortcut is already assigned. Choose another key combination.'); return; }
+    setKeyboardShortcuts(current => ({ ...current, [action]: shortcut }));
+    setCapturingShortcut(null);
+    setShortcutError('');
+  }
+
+  function formatShortcut(shortcut: string) {
+    return shortcut.replace('ArrowLeft', '←').replace('ArrowRight', '→').replace('ArrowUp', '↑').replace('ArrowDown', '↓');
+  }
 
   function focusLastWord(cue: SubtitleCue | null = activeCue) {
     if (!cue) return;
@@ -159,18 +290,22 @@ export default function App() {
     }
   }
 
-  async function chooseVideo() {
+  async function loadSelectedVideo(selected: SelectedVideo | string | null) {
+    if (!selected) return;
+    if (typeof selected === 'string' || !Array.isArray(selected.tracks)) {
+      setVideoError('The app is still running an old version. Close all game windows and restart it with npm run dev.');
+      return;
+    }
     try {
-      const selected = await window.desktop?.chooseVideo();
-      if (!selected) return;
-      if (typeof selected === 'string' || !Array.isArray(selected.tracks)) {
-        setVideoError('The app is still running an old version. Close all game windows and restart it with npm run dev.');
-        return;
-      }
+      if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime, true);
       setVideo({ path: selected.path, url: '' });
+      setPlaybackKey('');
+      setResumePosition(0);
+      lastPositionSaveRef.current = { at: 0, position: -1, playbackKey: '' };
       setTracks(selected.tracks.filter(track => track.textSupported));
       setSubtitleCues([]);
       setSelectedTrack('');
+      setExternalSubtitleName('');
       const textTracks = selected.tracks.filter(track => track.textSupported);
       setSubtitleStatus(textTracks.length
         ? `${textTracks.length} text subtitle track(s) found.`
@@ -180,12 +315,21 @@ export default function App() {
       setVideoError('');
       setSessionError('');
       setVideoLoading(true);
+      setVideoProgress(0);
       const prepared = await window.desktop?.prepareVideo(selected.path, selected);
       if (prepared) {
+        setPlaybackKey(prepared.playbackKey);
+        setResumePosition(prepared.resumePosition);
+        lastPositionSaveRef.current = { at: Date.now(), position: prepared.resumePosition, playbackKey: prepared.playbackKey };
         setVideo({ path: selected.path, url: prepared.url });
         setFavorites(await window.desktop?.loadFavorites() || []);
         setFavoritesStatus('');
         setVideoError('');
+        if (prepared.savedSubtitleChoice?.kind === 'internal') {
+          await chooseTrack(String(prepared.savedSubtitleChoice.streamIndex), selected.path, prepared.playbackKey);
+        } else if (prepared.savedSubtitleChoice?.kind === 'external') {
+          await loadExternalSubtitle(prepared.savedSubtitleChoice.path, prepared.playbackKey);
+        }
       }
     } catch (error) {
       setVideoError(error instanceof Error ? error.message : 'Could not prepare this video.');
@@ -194,18 +338,65 @@ export default function App() {
     }
   }
 
-  async function chooseTrack(value: string) {
+  async function chooseVideo() {
+    try {
+      const selected = await window.desktop?.chooseVideo();
+      if (selected) await loadSelectedVideo(selected);
+    } catch (error) {
+      setVideoError(error instanceof Error ? error.message : 'Could not open this video.');
+    }
+  }
+
+  async function chooseTrack(value: string, filePath = video?.path, sourceKey = playbackKey) {
     setSelectedTrack(value);
+    setExternalSubtitleName('');
     setSubtitleCues([]);
-    if (!value || !video || !window.desktop) return;
+    if (!value || !filePath || !window.desktop) {
+      if (!value && sourceKey) void window.desktop?.saveSubtitleChoice(sourceKey, null);
+      return;
+    }
     setSubtitleLoading(true);
     setSubtitleStatus('');
     try {
-      const cues = await window.desktop.extractSubtitle(video.path, Number(value));
+      const cues = await window.desktop.extractSubtitle(filePath, Number(value));
       setSubtitleCues(cues);
       setSubtitleStatus(`Subtitle loaded · ${cues.length.toLocaleString('en-US')} lines`);
+      if (sourceKey) await window.desktop.saveSubtitleChoice(sourceKey, { kind: 'internal', streamIndex: Number(value) });
     } catch {
       setSubtitleStatus('Could not read this subtitle track.');
+    } finally {
+      setSubtitleLoading(false);
+    }
+  }
+
+  async function chooseExternalSubtitle() {
+    if (!window.desktop?.chooseExternalSubtitle) return;
+    setSubtitleLoading(true);
+    setSubtitleStatus('');
+    try {
+      const selected = await window.desktop.chooseExternalSubtitle();
+      if (!selected) return;
+      await loadExternalSubtitle(selected.path);
+    } catch (error) {
+      setSubtitleStatus(error instanceof Error ? error.message : 'Could not read this subtitle file.');
+    } finally {
+      setSubtitleLoading(false);
+    }
+  }
+
+  async function loadExternalSubtitle(filePath: string, sourceKey = playbackKey) {
+    if (!window.desktop?.loadExternalSubtitle) return;
+    setSubtitleLoading(true);
+    setSubtitleStatus('');
+    try {
+      const selected = await window.desktop.loadExternalSubtitle(filePath);
+      setSelectedTrack('');
+      setExternalSubtitleName(selected.path.split(/[\\/]/).pop() || selected.path);
+      setSubtitleCues(selected.cues);
+      setSubtitleStatus(`External subtitle loaded · ${selected.cues.length.toLocaleString('en-US')} lines`);
+      if (selected.cues.length && sourceKey) await window.desktop.saveSubtitleChoice(sourceKey, { kind: 'external', path: selected.path });
+    } catch (error) {
+      setSubtitleStatus(error instanceof Error ? error.message : 'Could not read this subtitle file.');
     } finally {
       setSubtitleLoading(false);
     }
@@ -237,7 +428,8 @@ export default function App() {
 
   function startSession() {
     const available = eligibleCues();
-    const currentTime = previewRef.current?.currentTime || 0;
+    const preview = previewRef.current;
+    const currentTime = preview && preview.readyState >= 1 ? preview.currentTime : resumePosition;
     const targetTime = currentTime + Math.max(1, interval);
     const firstCue = available.find(cue => cue.start >= targetTime)
       || available.find(cue => cue.start > currentTime);
@@ -254,6 +446,7 @@ export default function App() {
     setRevealed(false);
     setFinished(false);
     setInGame(true);
+    savePlaybackPosition(currentTime, true);
   }
 
   function onGameLoaded() {
@@ -261,7 +454,16 @@ export default function App() {
     if (!player) return;
     programmaticSeekTargetRef.current = gameStartTime;
     player.currentTime = gameStartTime;
+    savePlaybackPosition(gameStartTime, true);
     void player.play().catch(() => setAnswerStatus('Click the video play button to start playback.'));
+  }
+
+  function restorePreviewPosition() {
+    const player = previewRef.current;
+    if (!player || resumePosition <= 0) return;
+    const position = Math.min(resumePosition, Math.max(0, player.duration - 0.1));
+    player.currentTime = position;
+    if (position !== resumePosition) setResumePosition(position);
   }
 
   function findNextCueFrom(position: number) {
@@ -276,6 +478,7 @@ export default function App() {
     const player = gameVideoRef.current;
     if (!player) return;
     const position = player.currentTime;
+    savePlaybackPosition(position, true);
     const programmaticTarget = programmaticSeekTargetRef.current;
     if (programmaticTarget !== null && Math.abs(position - programmaticTarget) < 0.1) {
       programmaticSeekTargetRef.current = null;
@@ -297,6 +500,7 @@ export default function App() {
     const player = gameVideoRef.current;
     if (!player) return;
     const now = player.currentTime;
+    savePlaybackPosition(now);
     setPlaybackTime(now);
 
     if (activeCue) {
@@ -505,13 +709,50 @@ export default function App() {
     ? captionCue.text
     : undefined;
 
+  if (showShortcutSettings) {
+    const shortcutRows: Array<{ action: ShortcutAction; label: string; description: string }> = [
+      { action: 'restart', label: 'Replay line', description: 'Start the current subtitle line again.' },
+      { action: 'skip', label: 'Skip exercise', description: 'Resume playback and continue the session.' },
+      { action: 'next', label: 'Next phase', description: 'Jump to the next eligible subtitle.' },
+      { action: 'reveal', label: 'Show answer', description: 'Reveal the current line without advancing.' },
+      { action: 'favorite', label: 'Toggle favorite', description: 'Save or remove the current line.' },
+    ];
+    return (
+      <main className="app-shell shortcuts-shell">
+        <header className="topbar">
+          <div className="brand-mark">ED</div>
+          <div><p className="eyebrow">PERSONALIZE CONTROLS</p><h1>Keyboard shortcuts</h1></div>
+          <button className="back-to-setup" onClick={() => { setShowShortcutSettings(false); setCapturingShortcut(null); }}>Back</button>
+        </header>
+        <section className="shortcut-workspace">
+          <div className="shortcut-intro"><h2>Make the controls yours.</h2><p className="muted">Choose a button, then press the key combination you want to use.</p></div>
+          <section className="card shortcut-card">
+            {shortcutRows.map(row => (
+              <div className="shortcut-row" key={row.action}>
+                <div><strong>{row.label}</strong><p>{row.description}</p></div>
+                <button className={`shortcut-key ${capturingShortcut === row.action ? 'listening' : ''}`} onClick={() => { setCapturingShortcut(row.action); setShortcutError(''); }} onKeyDown={event => capturingShortcut === row.action && captureShortcut(row.action, event)}>
+                  {capturingShortcut === row.action ? 'Press keys…' : keyboardShortcuts[row.action] ? formatShortcut(keyboardShortcuts[row.action]) : 'Not assigned'}
+                </button>
+              </div>
+            ))}
+            <p className="helper">Click a shortcut, then press a combination with Ctrl, Alt, Shift, or Meta—or press the mouse Back or Forward button. Press Escape to cancel.</p>
+            {shortcutError && <p className="video-error">{shortcutError}</p>}
+            <button className="reset-shortcuts" onClick={() => { setKeyboardShortcuts(defaultShortcuts); setShortcutError(''); setCapturingShortcut(null); }}>Restore defaults</button>
+          </section>
+        </section>
+        <footer><span>ENGLISH DICTATION</span><span>SHORTCUTS ARE SAVED ON THIS COMPUTER</span></footer>
+      </main>
+    );
+  }
+
   if (inGame && video?.url) {
     return (
       <main className="app-shell game-shell">
         <header className="topbar">
           <div className="brand-mark">ED</div>
           <div><p className="eyebrow">DICTATION IN PROGRESS</p><h1>English Dictation</h1></div>
-          <button className="back-to-setup" onClick={() => setInGame(false)}>Back to settings</button>
+          <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>Keyboard shortcuts</button>
+          <button className="back-to-setup" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>Back to settings</button>
         </header>
         <section className="game-workspace">
           <div className="game-heading">
@@ -532,7 +773,8 @@ export default function App() {
                   onLoadedMetadata={onGameLoaded}
                   onTimeUpdate={onGameTimeUpdate}
                   onSeeked={onGameSeeked}
-                  onEnded={() => { setFinished(true); setNextCue(null); replayingPhaseRef.current = false; }}
+                  onPause={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); }}
+                  onEnded={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setFinished(true); setNextCue(null); replayingPhaseRef.current = false; }}
                 />
                 <button className="fullscreen-button" onClick={() => void toggleVideoFullscreen()} aria-label={isVideoFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
                   {isVideoFullscreen ? '⛶ Exit fullscreen' : '⛶ Fullscreen'}
@@ -543,14 +785,14 @@ export default function App() {
                 {!activeCue && subtitleMode === 'outside' && currentCaption && <div className="subtitle-overlay normal-caption">{currentCaption}</div>}
               </div>
               <div className="phase-actions">
-                {activeCue && <button title="Back (Mouse Back button)" onClick={restartPhase}>↶ Back</button>}
-                {activeCue && <button title="Skip (Shift+Enter)" onClick={skipPhase}>Skip →</button>}
-                <button title="Next phase (no keyboard shortcut)" onClick={goToNextPhase}>Next phase</button>
-                {activeCue && !revealed && <button className="reveal-button" title="Show answer (Mouse Forward button)" onClick={revealAnswer}>Show answer</button>}
-                {activeCue && <button title="Save or remove this subtitle from favorites" onClick={() => void toggleCurrentFavorite()}>
+                {activeCue && <button title={`Replay line${keyboardShortcuts.restart ? ` (${formatShortcut(keyboardShortcuts.restart)})` : ' (no shortcut)'}`} onClick={restartPhase}>↶ Back</button>}
+                {activeCue && <button title={`Skip exercise${keyboardShortcuts.skip ? ` (${formatShortcut(keyboardShortcuts.skip)})` : ''}`} onClick={skipPhase}>Skip →</button>}
+                <button title={`Next phase${keyboardShortcuts.next ? ` (${formatShortcut(keyboardShortcuts.next)})` : ''}`} onClick={goToNextPhase}>Next phase</button>
+                {activeCue && !revealed && <button className="reveal-button" title={`Show answer${keyboardShortcuts.reveal ? ` (${formatShortcut(keyboardShortcuts.reveal)})` : ' (no shortcut)'}`} onClick={revealAnswer}>Show answer</button>}
+                {activeCue && <button title={`Save or remove this subtitle${keyboardShortcuts.favorite ? ` (${formatShortcut(keyboardShortcuts.favorite)})` : ''}`} onClick={() => void toggleCurrentFavorite()}>
                   {favorites.some(favorite => favorite.start === activeCue.start && favorite.text === activeCue.text) ? '★ Favorited' : '☆ Favorite'}
                 </button>}
-                <button className="end-session-button" onClick={() => setInGame(false)}>End session</button>
+                <button className="end-session-button" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>End session</button>
               </div>
               <section className="favorites-panel" aria-label="Favorite subtitles">
                 <div className="favorites-heading"><strong>Favorites ({favorites.length})</strong><button onClick={() => void copyFavorites()} disabled={!favorites.length}>Copy favorites</button></div>
@@ -582,6 +824,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand-mark">ED</div>
         <div><p className="eyebrow">LOCAL LISTENING PRACTICE</p><h1>English Dictation</h1></div>
+        <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>Keyboard shortcuts</button>
         <span className="local-badge"><i /> Your files stay on this computer</span>
       </header>
       <section className="workspace">
@@ -592,14 +835,22 @@ export default function App() {
         <div className="columns">
           <section className="card media-card">
             <div className="card-heading"><div className="number">01</div><div><h3>Choose a video</h3><p>Select a file from your computer</p></div></div>
-            <button className="dropzone" onClick={() => void chooseVideo()}>
+            <button className="dropzone" onClick={() => void chooseVideo()} disabled={videoLoading}>
               <span className="upload-icon">↑</span>
-              <strong>{video ? 'Video selected' : 'Open a video file'}</strong>
-              <span className="file-name">{videoLoading ? 'Preparing video for playback…' : video?.path || 'MKV, MP4, AVI, MOV, and other formats'}</span>
+              <strong>{videoLoading ? (video ? 'Preparing video…' : 'Restoring previous video…') : video ? 'Video selected' : 'Open a video file'}</strong>
+              <span className="file-name">{videoLoading ? 'Please wait while the last video is loaded.' : video?.path || 'MKV, MP4, AVI, MOV, and other formats'}</span>
               <span className="browse-button">Browse files</span>
             </button>
+            {videoLoading && <div className="processing-panel" role="status" aria-live="polite">
+              <div className="processing-copy"><strong>Preparing video</strong><span>{videoProgress === null ? 'Estimating conversion time…' : `${Math.round(videoProgress)}% complete`}</span></div>
+              <div className="processing-track"><div className={videoProgress === null ? 'processing-fill indeterminate' : 'processing-fill'} style={videoProgress === null ? undefined : { width: `${Math.max(3, videoProgress)}%` }} /></div>
+              <small>The video is being optimized for smooth playback.</small>
+            </div>}
             {videoError && <p className="video-error">{videoError}</p>}
-            {video?.url && <div className="video-preview-wrap"><video ref={previewRef} className="video-preview" src={video.url} controls /></div>}
+            {video?.url && <div className="video-preview-wrap">
+              <video ref={previewRef} className="video-preview" src={video.url} controls onLoadedMetadata={restorePreviewPosition} onTimeUpdate={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime); }} onSeeked={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime, true); }} onPause={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime, true); }} />
+              {resumePosition > 0 && <p className="helper resume-note">Playback will resume from {formatVideoTime(resumePosition)}.</p>}
+            </div>}
             <div className="card-heading subtitle-heading"><div className="number">02</div><div><h3>Subtitle track</h3><p>Text subtitles found in the video</p></div></div>
             <div className="track-placeholder">
               <span className="caption-icon">CC</span>
@@ -611,8 +862,11 @@ export default function App() {
               ) : <div><strong>{video ? 'Internal tracks' : 'Waiting for a video'}</strong><span>{subtitleStatus}</span></div>}
               <span className="chevron">⌄</span>
             </div>
+            <div className="external-subtitle-control">
+              <button onClick={() => void chooseExternalSubtitle()} disabled={subtitleLoading || !video}>{subtitleLoading ? 'Loading subtitles…' : externalSubtitleName ? 'Choose another .srt file' : 'Choose external .srt'}</button>
+              {externalSubtitleName && <span className="external-subtitle-name" title={externalSubtitleName}>{externalSubtitleName}</span>}
+            </div>
             {(subtitleStatus || subtitleLoading) && <p className="helper">{subtitleLoading ? 'Reading subtitle lines…' : subtitleStatus}</p>}
-            <p className="helper">External .srt subtitles are not supported yet.</p>
           </section>
           <section className="card settings-card">
             <div className="card-heading"><div className="number">03</div><div><h3>Configure your session</h3><p>Adjust the pace of the exercise</p></div></div>
@@ -626,7 +880,7 @@ export default function App() {
             <label className="prefill-setting"><input type="checkbox" checked={prefillFirstWord} onChange={event => setPrefillFirstWord(event.target.checked)} /><span><strong>Fill in the first word</strong><small>The word is shown as correct and cannot be edited.</small></span></label>
             <div className="subtitles-setting"><div><strong>Subtitles outside exercises</strong><span>They stay hidden during a phase</span></div><div className="segmented"><button className={subtitleMode === 'outside' ? 'active' : ''} onClick={() => setSubtitleMode('outside')}>Visible</button><button className={subtitleMode === 'off' ? 'active' : ''} onClick={() => setSubtitleMode('off')}>Off</button></div></div>
             {sessionError && <p className="video-error">{sessionError}</p>}
-            <button className="start-button" onClick={startSession} disabled={!video?.url || !selectedTrack || !subtitleCues.length || videoLoading || subtitleLoading}>Continue <span>→</span></button>
+            <button className="start-button" onClick={startSession} disabled={!video?.url || (!selectedTrack && !externalSubtitleName) || !subtitleCues.length || videoLoading || subtitleLoading}>Continue <span>→</span></button>
             <p className="privacy-note">◆ &nbsp;No video or progress data is sent over the internet.</p>
           </section>
         </div>
