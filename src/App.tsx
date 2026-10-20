@@ -57,6 +57,13 @@ function wordCount(text: string) {
 }
 
 export default function App() {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      return window.localStorage.getItem('english-dictation-theme') === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
   const [video, setVideo] = useState<{ path: string; url: string } | null>(null);
   const [videoError, setVideoError] = useState('');
   const [videoLoading, setVideoLoading] = useState(true);
@@ -102,6 +109,21 @@ export default function App() {
   const manualSeekPositionRef = useRef<number | null>(null);
   const programmaticSeekTargetRef = useRef<number | null>(null);
   const lastPositionSaveRef = useRef({ at: 0, position: -1, playbackKey: '' });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { window.localStorage.setItem('english-dictation-theme', theme); } catch { /* Theme remains active for this session. */ }
+  }, [theme]);
+
+  function themeControl() {
+    return <button
+      className="theme-toggle"
+      type="button"
+      onClick={() => setTheme(current => current === 'dark' ? 'light' : 'dark')}
+      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`}
+      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`}
+    ><span aria-hidden="true">{theme === 'dark' ? '☼' : '☾'}</span><span>{theme === 'dark' ? 'Light' : 'Dark'}</span></button>;
+  }
 
   function savePlaybackPosition(position: number, force = false) {
     if (!playbackKey || !window.desktop?.savePlaybackPosition || !Number.isFinite(position)) return;
@@ -709,6 +731,19 @@ export default function App() {
     ? captionCue.text
     : undefined;
 
+  function renderPhaseActions(className = '') {
+    return <div className={`phase-actions ${className}`}>
+      {activeCue && <button title={`Replay line${keyboardShortcuts.restart ? ` (${formatShortcut(keyboardShortcuts.restart)})` : ' (no shortcut)'}`} onClick={restartPhase}>↶ Back</button>}
+      {activeCue && <button title={`Skip exercise${keyboardShortcuts.skip ? ` (${formatShortcut(keyboardShortcuts.skip)})` : ''}`} onClick={skipPhase}>Skip →</button>}
+      <button title={`Next phase${keyboardShortcuts.next ? ` (${formatShortcut(keyboardShortcuts.next)})` : ''}`} onClick={goToNextPhase}>Next phase</button>
+      {activeCue && !revealed && <button className="reveal-button" title={`Show answer${keyboardShortcuts.reveal ? ` (${formatShortcut(keyboardShortcuts.reveal)})` : ' (no shortcut)'}`} onClick={revealAnswer}>Show answer</button>}
+      {activeCue && <button title={`Save or remove this subtitle${keyboardShortcuts.favorite ? ` (${formatShortcut(keyboardShortcuts.favorite)})` : ''}`} onClick={() => void toggleCurrentFavorite()}>
+        {favorites.some(favorite => favorite.start === activeCue.start && favorite.text === activeCue.text) ? '★ Favorited' : '☆ Favorite'}
+      </button>}
+      <button className="end-session-button" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>End session</button>
+    </div>;
+  }
+
   if (showShortcutSettings) {
     const shortcutRows: Array<{ action: ShortcutAction; label: string; description: string }> = [
       { action: 'restart', label: 'Replay line', description: 'Start the current subtitle line again.' },
@@ -718,11 +753,12 @@ export default function App() {
       { action: 'favorite', label: 'Toggle favorite', description: 'Save or remove the current line.' },
     ];
     return (
-      <main className="app-shell shortcuts-shell">
+      <main className="app-shell shortcuts-shell" data-theme={theme}>
         <header className="topbar">
           <div className="brand-mark">ED</div>
           <div><p className="eyebrow">PERSONALIZE CONTROLS</p><h1>Keyboard shortcuts</h1></div>
           <button className="back-to-setup" onClick={() => { setShowShortcutSettings(false); setCapturingShortcut(null); }}>Back</button>
+          {themeControl()}
         </header>
         <section className="shortcut-workspace">
           <div className="shortcut-intro"><h2>Make the controls yours.</h2><p className="muted">Choose a button, then press the key combination you want to use.</p></div>
@@ -747,12 +783,13 @@ export default function App() {
 
   if (inGame && video?.url) {
     return (
-      <main className="app-shell game-shell">
+      <main className="app-shell game-shell" data-theme={theme}>
         <header className="topbar">
           <div className="brand-mark">ED</div>
           <div><p className="eyebrow">DICTATION IN PROGRESS</p><h1>English Dictation</h1></div>
           <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>Keyboard shortcuts</button>
           <button className="back-to-setup" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>Back to settings</button>
+          {themeControl()}
         </header>
         <section className="game-workspace">
           <div className="game-heading">
@@ -776,6 +813,7 @@ export default function App() {
                   onPause={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); }}
                   onEnded={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setFinished(true); setNextCue(null); replayingPhaseRef.current = false; }}
                 />
+                {renderPhaseActions('fullscreen-phase-actions')}
                 <button className="fullscreen-button" onClick={() => void toggleVideoFullscreen()} aria-label={isVideoFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
                   {isVideoFullscreen ? '⛶ Exit fullscreen' : '⛶ Fullscreen'}
                 </button>
@@ -784,16 +822,7 @@ export default function App() {
                 </div>}
                 {!activeCue && subtitleMode === 'outside' && currentCaption && <div className="subtitle-overlay normal-caption">{currentCaption}</div>}
               </div>
-              <div className="phase-actions">
-                {activeCue && <button title={`Replay line${keyboardShortcuts.restart ? ` (${formatShortcut(keyboardShortcuts.restart)})` : ' (no shortcut)'}`} onClick={restartPhase}>↶ Back</button>}
-                {activeCue && <button title={`Skip exercise${keyboardShortcuts.skip ? ` (${formatShortcut(keyboardShortcuts.skip)})` : ''}`} onClick={skipPhase}>Skip →</button>}
-                <button title={`Next phase${keyboardShortcuts.next ? ` (${formatShortcut(keyboardShortcuts.next)})` : ''}`} onClick={goToNextPhase}>Next phase</button>
-                {activeCue && !revealed && <button className="reveal-button" title={`Show answer${keyboardShortcuts.reveal ? ` (${formatShortcut(keyboardShortcuts.reveal)})` : ' (no shortcut)'}`} onClick={revealAnswer}>Show answer</button>}
-                {activeCue && <button title={`Save or remove this subtitle${keyboardShortcuts.favorite ? ` (${formatShortcut(keyboardShortcuts.favorite)})` : ''}`} onClick={() => void toggleCurrentFavorite()}>
-                  {favorites.some(favorite => favorite.start === activeCue.start && favorite.text === activeCue.text) ? '★ Favorited' : '☆ Favorite'}
-                </button>}
-                <button className="end-session-button" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>End session</button>
-              </div>
+              {renderPhaseActions()}
               <section className="favorites-panel" aria-label="Favorite subtitles">
                 <div className="favorites-heading"><strong>Favorites ({favorites.length})</strong><button onClick={() => void copyFavorites()} disabled={!favorites.length}>Copy favorites</button></div>
                 <textarea
@@ -820,12 +849,13 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-theme={theme}>
       <header className="topbar">
         <div className="brand-mark">ED</div>
         <div><p className="eyebrow">LOCAL LISTENING PRACTICE</p><h1>English Dictation</h1></div>
         <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>Keyboard shortcuts</button>
         <span className="local-badge"><i /> Your files stay on this computer</span>
+        {themeControl()}
       </header>
       <section className="workspace">
         <div className="intro">
