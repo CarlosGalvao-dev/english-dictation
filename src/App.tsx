@@ -10,6 +10,40 @@ const defaultShortcuts: KeyboardShortcuts = {
   favorite: '',
 };
 
+const portuguese: Record<string, string> = {
+  Language: 'Idioma', 'English (United States)': 'Inglês (Estados Unidos)', 'Português (Brasil)': 'Português (Brasil)', 'English Dictation': 'Ditado em Inglês', Fullscreen: 'Tela cheia', ' (no shortcut)': ' (sem atalho)',
+  'Switch to light appearance': 'Mudar para o tema claro', 'Switch to dark appearance': 'Mudar para o tema escuro', Light: 'Claro', Dark: 'Escuro',
+  'PERSONALIZE CONTROLS': 'PERSONALIZE OS CONTROLES', 'Keyboard shortcuts': 'Atalhos do teclado', Back: 'Voltar',
+  'Make the controls yours.': 'Personalize os controles.', 'Choose a button, then press the key combination you want to use.': 'Escolha um botão e pressione a combinação de teclas que deseja usar.',
+  'Replay line': 'Repetir a fala', 'Start the current subtitle line again.': 'Recomeçar a legenda atual.', 'Skip exercise': 'Pular exercício', 'Resume playback and continue the session.': 'Retomar o vídeo e continuar a sessão.',
+  'Next phase': 'Próxima etapa', 'Jump to the next eligible subtitle.': 'Ir para a próxima legenda válida.', 'Show answer': 'Mostrar resposta', 'Reveal the current line without advancing.': 'Revelar a fala atual sem avançar.',
+  'Toggle favorite': 'Alternar favorito', 'Save or remove the current line.': 'Salvar ou remover a fala atual.', 'Press keys…': 'Pressione as teclas…', 'Not assigned': 'Não configurado',
+  'Click a shortcut, then press a combination with Ctrl, Alt, Shift, or Meta—or press the mouse Back or Forward button. Press Escape to cancel.': 'Clique em um atalho e pressione uma combinação com Ctrl, Alt, Shift ou Meta — ou use os botões voltar/avançar do mouse. Pressione Esc para cancelar.',
+  'Restore defaults': 'Restaurar padrão', 'SHORTCUTS ARE SAVED ON THIS COMPUTER': 'ATALHOS SALVOS NESTE COMPUTADOR', 'DICTATION IN PROGRESS': 'DITADO EM ANDAMENTO',
+  'Back to settings': 'Voltar às configurações', 'LISTEN CAREFULLY': 'OUÇA COM ATENÇÃO', 'Type the full line': 'Digite a frase completa', 'Video finished': 'Vídeo finalizado', 'Session is playing': 'Sessão em andamento',
+  'Fill in the blanks over the video.': 'Preencha os espaços enquanto assiste ao vídeo.', 'You have reached the end of the video.': 'Você chegou ao final do vídeo.', 'The video will pause at the next selected line.': 'O vídeo será pausado na próxima fala selecionada.',
+  'Exit fullscreen': 'Sair da tela cheia', 'Enter fullscreen': 'Entrar em tela cheia', 'Favorite subtitles': 'Legendas favoritas', Favorites: 'Favoritos', 'Copy favorites': 'Copiar favoritos',
+  'Saved favorite subtitles': 'Legendas favoritas salvas', 'Favorite subtitles from this video will appear here.': 'As legendas favoritas deste vídeo aparecerão aqui.', 'Use the arrow keys to move between letters and words.': 'Use as setas para navegar entre letras e palavras.',
+  'Current phase': 'Etapa atual', 'Next pause scheduled': 'Próxima pausa agendada', 'Session ended': 'Sessão encerrada', 'Continuous playback': 'Reprodução contínua', 'PRACTICE AT YOUR OWN PACE': 'PRATIQUE NO SEU RITMO',
+  'LOCAL LISTENING PRACTICE': 'PRÁTICA DE COMPREENSÃO LOCAL', 'Your files stay on this computer': 'Seus arquivos ficam neste computador', 'STUDY SESSION': 'SESSÃO DE ESTUDO',
+  'Turn any scene into practice.': 'Transforme qualquer cena em exercício.', 'Choose a video and subtitle track to create your dictation exercise.': 'Escolha um vídeo e uma legenda para criar seu exercício de ditado.',
+  'Choose a video': 'Escolha um vídeo', 'Select a file from your computer': 'Selecione um arquivo do computador', 'Preparing video…': 'Preparando vídeo…', 'Restoring previous video…': 'Restaurando vídeo anterior…', 'Video selected': 'Vídeo selecionado', 'Open a video file': 'Abrir arquivo de vídeo',
+  'Please wait while the last video is loaded.': 'Aguarde enquanto o último vídeo é carregado.', 'MKV, MP4, AVI, MOV, and other formats': 'MKV, MP4, AVI, MOV e outros formatos', 'Browse files': 'Procurar arquivos', 'Preparing video': 'Preparando vídeo', 'Estimating conversion time…': 'Estimando o tempo de conversão…', 'complete': 'concluído', 'The video is being optimized for smooth playback.': 'O vídeo está sendo otimizado para uma reprodução fluida.',
+  'Playback will resume from': 'A reprodução será retomada em', 'Subtitle track': 'Faixa de legenda', 'Text subtitles found in the video': 'Legendas de texto encontradas no vídeo', 'Choose a subtitle track': 'Escolha uma faixa de legenda', 'Internal tracks': 'Faixas internas', 'Waiting for a video': 'Aguardando um vídeo', 'Internal subtitle tracks will appear here': 'As faixas de legenda internas aparecerão aqui',
+  'Loading subtitles…': 'Carregando legendas…', 'Choose another .srt file': 'Escolher outro arquivo .srt', 'Choose external .srt': 'Escolher arquivo .srt externo', 'Reading subtitle lines…': 'Lendo as linhas da legenda…',
+  'Configure your session': 'Configure sua sessão', 'Adjust the pace of the exercise': 'Ajuste o ritmo do exercício', 'Pause for an exercise every': 'Pausar para um exercício a cada', seconds: 'segundos',
+  'The video pauses at an eligible line after this interval.': 'O vídeo pausa em uma fala válida após esse intervalo.', 'Minimum words per line': 'Mínimo de palavras por fala', words: 'palavras', 'Maximum line length': 'Tamanho máximo da fala', characters: 'caracteres',
+  'Fill in the first word': 'Preencher a primeira palavra', 'The word is shown as correct and cannot be edited.': 'A palavra aparece como correta e não pode ser editada.', 'Subtitles outside exercises': 'Legendas fora dos exercícios', 'They stay hidden during a phase': 'Elas ficam ocultas durante cada etapa', Visible: 'Visíveis', Off: 'Desativadas', Continue: 'Continuar', 'No video or progress data is sent over the internet.': 'Nenhum vídeo ou dado de progresso é enviado pela internet.',
+  'ENGLISH DICTATION': 'DITADO EM INGLÊS', 'Add Ctrl, Alt, Shift, or Meta so the shortcut does not interrupt typing.': 'Adicione Ctrl, Alt, Shift ou Meta para que o atalho não interrompa a digitação.', 'That shortcut is already assigned. Choose another key combination.': 'Esse atalho já está configurado. Escolha outra combinação de teclas.',
+  'Could not change fullscreen mode.': 'Não foi possível alterar o modo de tela cheia.', 'The app is still running an old version. Close all game windows and restart it with npm run dev.': 'O aplicativo ainda está em uma versão antiga. Feche todas as janelas do jogo e reinicie com npm run dev.', 'No subtitle tracks were found in this video.': 'Nenhuma faixa de legenda foi encontrada neste vídeo.',
+  'Could not restore the previous video.': 'Não foi possível restaurar o vídeo anterior.', 'Favorites cleared because the video cache was deleted.': 'Os favoritos foram apagados porque o cache de vídeos foi excluído.', 'Could not prepare this video.': 'Não foi possível preparar este vídeo.', 'Could not open this video.': 'Não foi possível abrir este vídeo.',
+  'This video has subtitle tracks, but they are not text-based:': 'Este vídeo tem faixas de legenda, mas elas não são de texto:', 'text subtitle track(s) found.': 'faixa(s) de legenda de texto encontrada(s).', 'Subtitle loaded': 'Legenda carregada', lines: 'linhas', 'Could not read this subtitle track.': 'Não foi possível ler esta faixa de legenda.',
+  'Could not read this subtitle file.': 'Não foi possível ler este arquivo de legenda.', 'External subtitle loaded': 'Legenda externa carregada', 'Favorites copied to clipboard.': 'Favoritos copiados para a área de transferência.', 'Could not copy favorites.': 'Não foi possível copiar os favoritos.', 'Save or remove this subtitle': 'Salvar ou remover esta legenda',
+  'There are no lines matching these criteria after the current video position. Lower the minimum word count or maximum length, or rewind the video.': 'Não há falas que atendam a esses critérios após a posição atual do vídeo. Reduza o mínimo de palavras ou o tamanho máximo, ou volte o vídeo.',
+  'Click the video play button to start playback.': 'Clique em reproduzir no vídeo para iniciar.', 'There are no more eligible lines in this video.': 'Não há mais falas válidas neste vídeo.', 'Skip →': 'Pular →', 'End session': 'Encerrar sessão', 'Favorited': 'Favoritado', 'Favorite': 'Favoritar',
+  'Shortcuts saved on this computer': 'Atalhos salvos neste computador',
+};
+
 declare global {
   interface Window {
     desktop?: {
@@ -57,6 +91,25 @@ function wordCount(text: string) {
 }
 
 export default function App() {
+  const [language, setLanguage] = useState<'en-US' | 'pt-BR'>(() => {
+    try {
+      return window.localStorage.getItem('english-dictation-language') === 'pt-BR' ? 'pt-BR' : 'en-US';
+    } catch {
+      return 'en-US';
+    }
+  });
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+  const tr = (text: string) => {
+    if (language !== 'pt-BR') return text;
+    if (portuguese[text]) return portuguese[text];
+    let match = text.match(/^(\d+) text subtitle track\(s\) found\.$/);
+    if (match) return `${match[1]} faixa(s) de legenda de texto encontrada(s).`;
+    match = text.match(/^(Subtitle loaded|External subtitle loaded) · (.+) lines$/);
+    if (match) return `${match[1] === 'Subtitle loaded' ? 'Legenda carregada' : 'Legenda externa carregada'} · ${match[2]} linhas`;
+    match = text.match(/^This video has subtitle tracks, but they are not text-based: (.+)\.$/);
+    if (match) return `Este vídeo tem faixas de legenda, mas elas não são de texto: ${match[1]}.`;
+    return text;
+  };
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     try {
       return window.localStorage.getItem('english-dictation-theme') === 'light' ? 'light' : 'dark';
@@ -115,14 +168,32 @@ export default function App() {
     try { window.localStorage.setItem('english-dictation-theme', theme); } catch { /* Theme remains active for this session. */ }
   }, [theme]);
 
+  useEffect(() => {
+    document.documentElement.lang = language;
+    try { window.localStorage.setItem('english-dictation-language', language); } catch { /* Language remains active for this session. */ }
+  }, [language]);
+
+  function languageControl() {
+    const languageName = language === 'en-US' ? 'English (United States)' : 'Português (Brasil)';
+    return <div className="language-control">
+      <button className="language-button" type="button" aria-label={tr('Language')} title={languageName} aria-expanded={showLanguageMenu} onClick={() => setShowLanguageMenu(open => !open)}>
+        <span aria-hidden="true">{language === 'en-US' ? '🇺🇸' : '🇧🇷'}</span><span className="language-chevron" aria-hidden="true">⌄</span>
+      </button>
+      {showLanguageMenu && <div className="language-menu" role="menu" aria-label={tr('Language')}>
+        <button type="button" role="menuitemradio" aria-checked={language === 'en-US'} onClick={() => { setLanguage('en-US'); setShowLanguageMenu(false); }}><span>🇺🇸</span> English (United States)</button>
+        <button type="button" role="menuitemradio" aria-checked={language === 'pt-BR'} onClick={() => { setLanguage('pt-BR'); setShowLanguageMenu(false); }}><span>🇧🇷</span> Português (Brasil)</button>
+      </div>}
+    </div>;
+  }
+
   function themeControl() {
     return <button
       className="theme-toggle"
       type="button"
       onClick={() => setTheme(current => current === 'dark' ? 'light' : 'dark')}
-      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`}
-      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`}
-    ><span aria-hidden="true">{theme === 'dark' ? '☼' : '☾'}</span><span>{theme === 'dark' ? 'Light' : 'Dark'}</span></button>;
+      aria-label={tr(`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`)}
+      title={tr(`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`)}
+    ><span aria-hidden="true">{theme === 'dark' ? '☼' : '☾'}</span><span>{tr(theme === 'dark' ? 'Light' : 'Dark')}</span></button>;
   }
 
   function savePlaybackPosition(position: number, force = false) {
@@ -713,7 +784,7 @@ export default function App() {
               }
             }
           }}
-          aria-label={`Word ${thisIndex + 1}`}
+          aria-label={`${language === 'pt-BR' ? 'Palavra' : 'Word'} ${thisIndex + 1}`}
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
@@ -733,50 +804,51 @@ export default function App() {
 
   function renderPhaseActions(className = '') {
     return <div className={`phase-actions ${className}`}>
-      {activeCue && <button title={`Replay line${keyboardShortcuts.restart ? ` (${formatShortcut(keyboardShortcuts.restart)})` : ' (no shortcut)'}`} onClick={restartPhase}>↶ Back</button>}
-      {activeCue && <button title={`Skip exercise${keyboardShortcuts.skip ? ` (${formatShortcut(keyboardShortcuts.skip)})` : ''}`} onClick={skipPhase}>Skip →</button>}
-      <button title={`Next phase${keyboardShortcuts.next ? ` (${formatShortcut(keyboardShortcuts.next)})` : ''}`} onClick={goToNextPhase}>Next phase</button>
-      {activeCue && !revealed && <button className="reveal-button" title={`Show answer${keyboardShortcuts.reveal ? ` (${formatShortcut(keyboardShortcuts.reveal)})` : ' (no shortcut)'}`} onClick={revealAnswer}>Show answer</button>}
-      {activeCue && <button title={`Save or remove this subtitle${keyboardShortcuts.favorite ? ` (${formatShortcut(keyboardShortcuts.favorite)})` : ''}`} onClick={() => void toggleCurrentFavorite()}>
-        {favorites.some(favorite => favorite.start === activeCue.start && favorite.text === activeCue.text) ? '★ Favorited' : '☆ Favorite'}
+      {activeCue && <button title={`${tr('Replay line')}${keyboardShortcuts.restart ? ` (${formatShortcut(keyboardShortcuts.restart)})` : tr(' (no shortcut)')}`} onClick={restartPhase}>↶ {tr('Back')}</button>}
+      {activeCue && <button title={`${tr('Skip exercise')}${keyboardShortcuts.skip ? ` (${formatShortcut(keyboardShortcuts.skip)})` : ''}`} onClick={skipPhase}>{tr('Skip →')}</button>}
+      <button title={`${tr('Next phase')}${keyboardShortcuts.next ? ` (${formatShortcut(keyboardShortcuts.next)})` : ''}`} onClick={goToNextPhase}>{tr('Next phase')}</button>
+      {activeCue && !revealed && <button className="reveal-button" title={`${tr('Show answer')}${keyboardShortcuts.reveal ? ` (${formatShortcut(keyboardShortcuts.reveal)})` : tr(' (no shortcut)')}`} onClick={revealAnswer}>{tr('Show answer')}</button>}
+      {activeCue && <button title={`${tr('Save or remove this subtitle')}${keyboardShortcuts.favorite ? ` (${formatShortcut(keyboardShortcuts.favorite)})` : ''}`} onClick={() => void toggleCurrentFavorite()}>
+        {favorites.some(favorite => favorite.start === activeCue.start && favorite.text === activeCue.text) ? `★ ${tr('Favorited')}` : `☆ ${tr('Favorite')}`}
       </button>}
-      <button className="end-session-button" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>End session</button>
+      <button className="end-session-button" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>{tr('End session')}</button>
     </div>;
   }
 
   if (showShortcutSettings) {
     const shortcutRows: Array<{ action: ShortcutAction; label: string; description: string }> = [
-      { action: 'restart', label: 'Replay line', description: 'Start the current subtitle line again.' },
-      { action: 'skip', label: 'Skip exercise', description: 'Resume playback and continue the session.' },
-      { action: 'next', label: 'Next phase', description: 'Jump to the next eligible subtitle.' },
-      { action: 'reveal', label: 'Show answer', description: 'Reveal the current line without advancing.' },
-      { action: 'favorite', label: 'Toggle favorite', description: 'Save or remove the current line.' },
+      { action: 'restart', label: tr('Replay line'), description: tr('Start the current subtitle line again.') },
+      { action: 'skip', label: tr('Skip exercise'), description: tr('Resume playback and continue the session.') },
+      { action: 'next', label: tr('Next phase'), description: tr('Jump to the next eligible subtitle.') },
+      { action: 'reveal', label: tr('Show answer'), description: tr('Reveal the current line without advancing.') },
+      { action: 'favorite', label: tr('Toggle favorite'), description: tr('Save or remove the current line.') },
     ];
     return (
       <main className="app-shell shortcuts-shell" data-theme={theme}>
         <header className="topbar">
           <div className="brand-mark">ED</div>
-          <div><p className="eyebrow">PERSONALIZE CONTROLS</p><h1>Keyboard shortcuts</h1></div>
-          <button className="back-to-setup" onClick={() => { setShowShortcutSettings(false); setCapturingShortcut(null); }}>Back</button>
+          <div><p className="eyebrow">{tr('PERSONALIZE CONTROLS')}</p><h1>{tr('Keyboard shortcuts')}</h1></div>
+          <button className="back-to-setup" onClick={() => { setShowShortcutSettings(false); setCapturingShortcut(null); }}>{tr('Back')}</button>
+          {languageControl()}
           {themeControl()}
         </header>
         <section className="shortcut-workspace">
-          <div className="shortcut-intro"><h2>Make the controls yours.</h2><p className="muted">Choose a button, then press the key combination you want to use.</p></div>
+          <div className="shortcut-intro"><h2>{tr('Make the controls yours.')}</h2><p className="muted">{tr('Choose a button, then press the key combination you want to use.')}</p></div>
           <section className="card shortcut-card">
             {shortcutRows.map(row => (
               <div className="shortcut-row" key={row.action}>
                 <div><strong>{row.label}</strong><p>{row.description}</p></div>
                 <button className={`shortcut-key ${capturingShortcut === row.action ? 'listening' : ''}`} onClick={() => { setCapturingShortcut(row.action); setShortcutError(''); }} onKeyDown={event => capturingShortcut === row.action && captureShortcut(row.action, event)}>
-                  {capturingShortcut === row.action ? 'Press keys…' : keyboardShortcuts[row.action] ? formatShortcut(keyboardShortcuts[row.action]) : 'Not assigned'}
+                  {capturingShortcut === row.action ? tr('Press keys…') : keyboardShortcuts[row.action] ? formatShortcut(keyboardShortcuts[row.action]) : tr('Not assigned')}
                 </button>
               </div>
             ))}
-            <p className="helper">Click a shortcut, then press a combination with Ctrl, Alt, Shift, or Meta—or press the mouse Back or Forward button. Press Escape to cancel.</p>
-            {shortcutError && <p className="video-error">{shortcutError}</p>}
-            <button className="reset-shortcuts" onClick={() => { setKeyboardShortcuts(defaultShortcuts); setShortcutError(''); setCapturingShortcut(null); }}>Restore defaults</button>
+            <p className="helper">{tr('Click a shortcut, then press a combination with Ctrl, Alt, Shift, or Meta—or press the mouse Back or Forward button. Press Escape to cancel.')}</p>
+            {shortcutError && <p className="video-error">{tr(shortcutError)}</p>}
+            <button className="reset-shortcuts" onClick={() => { setKeyboardShortcuts(defaultShortcuts); setShortcutError(''); setCapturingShortcut(null); }}>{tr('Restore defaults')}</button>
           </section>
         </section>
-        <footer><span>ENGLISH DICTATION</span><span>SHORTCUTS ARE SAVED ON THIS COMPUTER</span></footer>
+        <footer><span>{tr('ENGLISH DICTATION')}</span><span>{tr('SHORTCUTS ARE SAVED ON THIS COMPUTER')}</span></footer>
       </main>
     );
   }
@@ -786,16 +858,17 @@ export default function App() {
       <main className="app-shell game-shell" data-theme={theme}>
         <header className="topbar">
           <div className="brand-mark">ED</div>
-          <div><p className="eyebrow">DICTATION IN PROGRESS</p><h1>English Dictation</h1></div>
-          <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>Keyboard shortcuts</button>
-          <button className="back-to-setup" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>Back to settings</button>
+          <div><p className="eyebrow">{tr('DICTATION IN PROGRESS')}</p><h1>{tr('English Dictation')}</h1></div>
+          <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>{tr('Keyboard shortcuts')}</button>
+          <button className="back-to-setup" onClick={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setInGame(false); }}>{tr('Back to settings')}</button>
+          {languageControl()}
           {themeControl()}
         </header>
         <section className="game-workspace">
           <div className="game-heading">
-            <p className="eyebrow">LISTEN CAREFULLY</p>
-            <h2>{activeCue ? 'Type the full line' : finished ? 'Video finished' : 'Session is playing'}</h2>
-            <p className="muted">{activeCue ? 'Fill in the blanks over the video.' : finished ? 'You have reached the end of the video.' : 'The video will pause at the next selected line.'}</p>
+            <p className="eyebrow">{tr('LISTEN CAREFULLY')}</p>
+            <h2>{tr(activeCue ? 'Type the full line' : finished ? 'Video finished' : 'Session is playing')}</h2>
+            <p className="muted">{tr(activeCue ? 'Fill in the blanks over the video.' : finished ? 'You have reached the end of the video.' : 'The video will pause at the next selected line.')}</p>
           </div>
           <div className="game-layout">
             <section className="card game-player-card">
@@ -814,8 +887,8 @@ export default function App() {
                   onEnded={() => { if (gameVideoRef.current) savePlaybackPosition(gameVideoRef.current.currentTime, true); setFinished(true); setNextCue(null); replayingPhaseRef.current = false; }}
                 />
                 {renderPhaseActions('fullscreen-phase-actions')}
-                <button className="fullscreen-button" onClick={() => void toggleVideoFullscreen()} aria-label={isVideoFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
-                  {isVideoFullscreen ? '⛶ Exit fullscreen' : '⛶ Fullscreen'}
+                <button className="fullscreen-button" onClick={() => void toggleVideoFullscreen()} aria-label={tr(isVideoFullscreen ? 'Exit fullscreen' : 'Enter fullscreen')}>
+                  {isVideoFullscreen ? `⛶ ${tr('Exit fullscreen')}` : `⛶ ${tr('Fullscreen')}`}
                 </button>
                 {activeCue && <div className={`subtitle-overlay ${revealed ? 'revealed-overlay' : 'input-overlay'}`}>
                   {revealed ? activeCue.text : renderWordInputs(activeCue)}
@@ -823,27 +896,27 @@ export default function App() {
                 {!activeCue && subtitleMode === 'outside' && currentCaption && <div className="subtitle-overlay normal-caption">{currentCaption}</div>}
               </div>
               {renderPhaseActions()}
-              <section className="favorites-panel" aria-label="Favorite subtitles">
-                <div className="favorites-heading"><strong>Favorites ({favorites.length})</strong><button onClick={() => void copyFavorites()} disabled={!favorites.length}>Copy favorites</button></div>
+              <section className="favorites-panel" aria-label={tr('Favorite subtitles')}>
+                <div className="favorites-heading"><strong>{tr('Favorites')} ({favorites.length})</strong><button onClick={() => void copyFavorites()} disabled={!favorites.length}>{tr('Copy favorites')}</button></div>
                 <textarea
                   className="favorites-textarea"
-                  aria-label="Saved favorite subtitles"
+                  aria-label={tr('Saved favorite subtitles')}
                   value={favorites.map(favorite => favorite.text).join('\n')}
-                  placeholder="Favorite subtitles from this video will appear here."
+                  placeholder={tr('Favorite subtitles from this video will appear here.')}
                   readOnly
                 />
-                {favoritesStatus && <p className="game-hint">{favoritesStatus}</p>}
+                {favoritesStatus && <p className="game-hint">{tr(favoritesStatus)}</p>}
               </section>
-              {activeCue && !revealed && <p className="game-hint">Use the arrow keys to move between letters and words.</p>}
-              {answerStatus && <p className="answer-feedback">{answerStatus}</p>}
-              {!activeCue && sessionError && <p className="video-error">{sessionError}</p>}
+              {activeCue && !revealed && <p className="game-hint">{tr('Use the arrow keys to move between letters and words.')}</p>}
+              {answerStatus && <p className="answer-feedback">{tr(answerStatus)}</p>}
+              {!activeCue && sessionError && <p className="video-error">{tr(sessionError)}</p>}
               <div className="game-transport">
-                <span>{activeCue ? 'Current phase' : nextCue ? 'Next pause scheduled' : finished ? 'Session ended' : 'Continuous playback'}</span>
+                <span>{tr(activeCue ? 'Current phase' : nextCue ? 'Next pause scheduled' : finished ? 'Session ended' : 'Continuous playback')}</span>
               </div>
             </section>
           </div>
         </section>
-        <footer><span>ENGLISH DICTATION</span><span>PRACTICE AT YOUR OWN PACE</span></footer>
+        <footer><span>{tr('ENGLISH DICTATION')}</span><span>{tr('PRACTICE AT YOUR OWN PACE')}</span></footer>
       </main>
     );
   }
@@ -852,70 +925,71 @@ export default function App() {
     <main className="app-shell" data-theme={theme}>
       <header className="topbar">
         <div className="brand-mark">ED</div>
-        <div><p className="eyebrow">LOCAL LISTENING PRACTICE</p><h1>English Dictation</h1></div>
-        <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>Keyboard shortcuts</button>
-        <span className="local-badge"><i /> Your files stay on this computer</span>
+        <div><p className="eyebrow">{tr('LOCAL LISTENING PRACTICE')}</p><h1>{tr('English Dictation')}</h1></div>
+        <button className="back-to-setup shortcut-open-button" onClick={() => setShowShortcutSettings(true)}>{tr('Keyboard shortcuts')}</button>
+        <span className="local-badge"><i /> {tr('Your files stay on this computer')}</span>
+        {languageControl()}
         {themeControl()}
       </header>
       <section className="workspace">
         <div className="intro">
-          <div><p className="eyebrow">STUDY SESSION</p><h2>Turn any scene into practice.</h2><p className="muted">Choose a video and subtitle track to create your dictation exercise.</p></div>
+          <div><p className="eyebrow">{tr('STUDY SESSION')}</p><h2>{tr('Turn any scene into practice.')}</h2><p className="muted">{tr('Choose a video and subtitle track to create your dictation exercise.')}</p></div>
           <div className="step-indicator"><span>01</span><b />02<b />03</div>
         </div>
         <div className="columns">
           <section className="card media-card">
-            <div className="card-heading"><div className="number">01</div><div><h3>Choose a video</h3><p>Select a file from your computer</p></div></div>
+            <div className="card-heading"><div className="number">01</div><div><h3>{tr('Choose a video')}</h3><p>{tr('Select a file from your computer')}</p></div></div>
             <button className="dropzone" onClick={() => void chooseVideo()} disabled={videoLoading}>
               <span className="upload-icon">↑</span>
-              <strong>{videoLoading ? (video ? 'Preparing video…' : 'Restoring previous video…') : video ? 'Video selected' : 'Open a video file'}</strong>
-              <span className="file-name">{videoLoading ? 'Please wait while the last video is loaded.' : video?.path || 'MKV, MP4, AVI, MOV, and other formats'}</span>
-              <span className="browse-button">Browse files</span>
+              <strong>{tr(videoLoading ? (video ? 'Preparing video…' : 'Restoring previous video…') : video ? 'Video selected' : 'Open a video file')}</strong>
+              <span className="file-name">{videoLoading ? tr('Please wait while the last video is loaded.') : video?.path || tr('MKV, MP4, AVI, MOV, and other formats')}</span>
+              <span className="browse-button">{tr('Browse files')}</span>
             </button>
             {videoLoading && <div className="processing-panel" role="status" aria-live="polite">
-              <div className="processing-copy"><strong>Preparing video</strong><span>{videoProgress === null ? 'Estimating conversion time…' : `${Math.round(videoProgress)}% complete`}</span></div>
+              <div className="processing-copy"><strong>{tr('Preparing video')}</strong><span>{videoProgress === null ? tr('Estimating conversion time…') : `${Math.round(videoProgress)}% ${tr('complete')}`}</span></div>
               <div className="processing-track"><div className={videoProgress === null ? 'processing-fill indeterminate' : 'processing-fill'} style={videoProgress === null ? undefined : { width: `${Math.max(3, videoProgress)}%` }} /></div>
-              <small>The video is being optimized for smooth playback.</small>
+              <small>{tr('The video is being optimized for smooth playback.')}</small>
             </div>}
-            {videoError && <p className="video-error">{videoError}</p>}
+            {videoError && <p className="video-error">{tr(videoError)}</p>}
             {video?.url && <div className="video-preview-wrap">
               <video ref={previewRef} className="video-preview" src={video.url} controls onLoadedMetadata={restorePreviewPosition} onTimeUpdate={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime); }} onSeeked={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime, true); }} onPause={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime, true); }} />
-              {resumePosition > 0 && <p className="helper resume-note">Playback will resume from {formatVideoTime(resumePosition)}.</p>}
+              {resumePosition > 0 && <p className="helper resume-note">{tr('Playback will resume from')} {formatVideoTime(resumePosition)}.</p>}
             </div>}
-            <div className="card-heading subtitle-heading"><div className="number">02</div><div><h3>Subtitle track</h3><p>Text subtitles found in the video</p></div></div>
+            <div className="card-heading subtitle-heading"><div className="number">02</div><div><h3>{tr('Subtitle track')}</h3><p>{tr('Text subtitles found in the video')}</p></div></div>
             <div className="track-placeholder">
               <span className="caption-icon">CC</span>
               {tracks.length > 0 ? (
                 <select className="track-select" value={selectedTrack} onChange={event => void chooseTrack(event.target.value)}>
-                  <option value="">Choose a subtitle track</option>
+                  <option value="">{tr('Choose a subtitle track')}</option>
                   {tracks.map(track => <option value={track.index} key={track.index}>{track.label}</option>)}
                 </select>
-              ) : <div><strong>{video ? 'Internal tracks' : 'Waiting for a video'}</strong><span>{subtitleStatus}</span></div>}
+              ) : <div><strong>{tr(video ? 'Internal tracks' : 'Waiting for a video')}</strong><span>{tr(subtitleStatus)}</span></div>}
               <span className="chevron">⌄</span>
             </div>
             <div className="external-subtitle-control">
-              <button onClick={() => void chooseExternalSubtitle()} disabled={subtitleLoading || !video}>{subtitleLoading ? 'Loading subtitles…' : externalSubtitleName ? 'Choose another .srt file' : 'Choose external .srt'}</button>
+              <button onClick={() => void chooseExternalSubtitle()} disabled={subtitleLoading || !video}>{tr(subtitleLoading ? 'Loading subtitles…' : externalSubtitleName ? 'Choose another .srt file' : 'Choose external .srt')}</button>
               {externalSubtitleName && <span className="external-subtitle-name" title={externalSubtitleName}>{externalSubtitleName}</span>}
             </div>
-            {(subtitleStatus || subtitleLoading) && <p className="helper">{subtitleLoading ? 'Reading subtitle lines…' : subtitleStatus}</p>}
+            {(subtitleStatus || subtitleLoading) && <p className="helper">{subtitleLoading ? tr('Reading subtitle lines…') : tr(subtitleStatus)}</p>}
           </section>
           <section className="card settings-card">
-            <div className="card-heading"><div className="number">03</div><div><h3>Configure your session</h3><p>Adjust the pace of the exercise</p></div></div>
-            <label className="field-label" htmlFor="interval">Pause for an exercise every</label>
-            <div className="input-with-unit"><input id="interval" type="number" min="1" value={interval} onChange={event => setInterval(Number(event.target.value))} /><span>seconds</span></div>
-            <p className="helper">The video pauses at an eligible line after this interval.</p>
-            <label className="field-label spaced" htmlFor="minimum">Minimum words per line</label>
-            <div className="input-with-unit"><input id="minimum" type="number" min="1" value={minimumWords} onChange={event => setMinimumWords(Number(event.target.value))} /><span>words</span></div>
-            <label className="field-label spaced" htmlFor="length">Maximum line length</label>
-            <div className="input-with-unit"><input id="length" type="number" min="20" value={maxCharacters} onChange={event => setMaxCharacters(Number(event.target.value))} /><span>characters</span></div>
-            <label className="prefill-setting"><input type="checkbox" checked={prefillFirstWord} onChange={event => setPrefillFirstWord(event.target.checked)} /><span><strong>Fill in the first word</strong><small>The word is shown as correct and cannot be edited.</small></span></label>
-            <div className="subtitles-setting"><div><strong>Subtitles outside exercises</strong><span>They stay hidden during a phase</span></div><div className="segmented"><button className={subtitleMode === 'outside' ? 'active' : ''} onClick={() => setSubtitleMode('outside')}>Visible</button><button className={subtitleMode === 'off' ? 'active' : ''} onClick={() => setSubtitleMode('off')}>Off</button></div></div>
-            {sessionError && <p className="video-error">{sessionError}</p>}
-            <button className="start-button" onClick={startSession} disabled={!video?.url || (!selectedTrack && !externalSubtitleName) || !subtitleCues.length || videoLoading || subtitleLoading}>Continue <span>→</span></button>
-            <p className="privacy-note">◆ &nbsp;No video or progress data is sent over the internet.</p>
+            <div className="card-heading"><div className="number">03</div><div><h3>{tr('Configure your session')}</h3><p>{tr('Adjust the pace of the exercise')}</p></div></div>
+            <label className="field-label" htmlFor="interval">{tr('Pause for an exercise every')}</label>
+            <div className="input-with-unit"><input id="interval" type="number" min="1" value={interval} onChange={event => setInterval(Number(event.target.value))} /><span>{tr('seconds')}</span></div>
+            <p className="helper">{tr('The video pauses at an eligible line after this interval.')}</p>
+            <label className="field-label spaced" htmlFor="minimum">{tr('Minimum words per line')}</label>
+            <div className="input-with-unit"><input id="minimum" type="number" min="1" value={minimumWords} onChange={event => setMinimumWords(Number(event.target.value))} /><span>{tr('words')}</span></div>
+            <label className="field-label spaced" htmlFor="length">{tr('Maximum line length')}</label>
+            <div className="input-with-unit"><input id="length" type="number" min="20" value={maxCharacters} onChange={event => setMaxCharacters(Number(event.target.value))} /><span>{tr('characters')}</span></div>
+            <label className="prefill-setting"><input type="checkbox" checked={prefillFirstWord} onChange={event => setPrefillFirstWord(event.target.checked)} /><span><strong>{tr('Fill in the first word')}</strong><small>{tr('The word is shown as correct and cannot be edited.')}</small></span></label>
+            <div className="subtitles-setting"><div><strong>{tr('Subtitles outside exercises')}</strong><span>{tr('They stay hidden during a phase')}</span></div><div className="segmented"><button className={subtitleMode === 'outside' ? 'active' : ''} onClick={() => setSubtitleMode('outside')}>{tr('Visible')}</button><button className={subtitleMode === 'off' ? 'active' : ''} onClick={() => setSubtitleMode('off')}>{tr('Off')}</button></div></div>
+            {sessionError && <p className="video-error">{tr(sessionError)}</p>}
+            <button className="start-button" onClick={startSession} disabled={!video?.url || (!selectedTrack && !externalSubtitleName) || !subtitleCues.length || videoLoading || subtitleLoading}>{tr('Continue')} <span>→</span></button>
+            <p className="privacy-note">◆ &nbsp;{tr('No video or progress data is sent over the internet.')}</p>
           </section>
         </div>
       </section>
-      <footer><span>ENGLISH DICTATION</span><span>PRACTICE AT YOUR OWN PACE</span></footer>
+      <footer><span>{tr('ENGLISH DICTATION')}</span><span>{tr('PRACTICE AT YOUR OWN PACE')}</span></footer>
     </main>
   );
 }
