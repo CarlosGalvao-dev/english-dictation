@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, clipboard } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, clipboard, Notification } = require('electron');
 const path = require('node:path');
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
@@ -20,6 +20,11 @@ let userSettings = {};
 let settingsWriteQueue = Promise.resolve();
 let videoPreparationQueue = Promise.resolve();
 const mediaFiles = new Map();
+
+ipcMain.on('notification:video-ready', (_event, { title, body }) => {
+  if (!Notification.isSupported()) return;
+  new Notification({ title, body }).show();
+});
 
 function persistUserSettings() {
   if (!userSettingsPath) return Promise.resolve();
@@ -260,12 +265,12 @@ ipcMain.handle('video:prepare', (event, filePath, videoInfo) => {
       && videoInfo.videoCodec === 'h264'
       && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
     const safeWebm = extension === '.webm' && ['vp8', 'vp9', 'av1'].includes(videoInfo.videoCodec);
-    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
+    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false, processedNow: false, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
 
     try {
       const cachedStats = await fs.stat(processedVideoPath);
       if (userSettings.processedVideoCacheKey === cacheKey && cachedStats.size > 0) {
-        return { url: registerMediaFile(processedVideoPath), converted: true, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
+        return { url: registerMediaFile(processedVideoPath), converted: true, processedNow: false, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
       }
     } catch { /* Cache file does not exist yet. */ }
 
@@ -312,7 +317,7 @@ ipcMain.handle('video:prepare', (event, filePath, videoInfo) => {
     if (!outputStats.size) throw new Error('FFmpeg produced an empty playback cache file.');
     userSettings.processedVideoCacheKey = cacheKey;
     await persistUserSettings();
-    return { url: registerMediaFile(outputPath), converted: true, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
+    return { url: registerMediaFile(outputPath), converted: true, processedNow: true, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
   });
   videoPreparationQueue = operation.catch(() => {});
   return operation;

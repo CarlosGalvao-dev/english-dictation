@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('desktop', {
   chooseVideo: () => ipcRenderer.invoke('dialog:video'),
   restoreLastVideo: () => ipcRenderer.invoke('video:restore-last'),
   prepareVideo: (filePath, videoInfo) => ipcRenderer.invoke('video:prepare', filePath, videoInfo),
+  notifyVideoReady: (title, body) => ipcRenderer.send('notification:video-ready', { title, body }),
   savePlaybackPosition: (playbackKey, position) => ipcRenderer.send('video:save-position', playbackKey, position),
   extractSubtitle: (filePath, streamIndex) => ipcRenderer.invoke('subtitle:extract', filePath, streamIndex),
   chooseExternalSubtitle: () => ipcRenderer.invoke('dialog:external-subtitle'),
