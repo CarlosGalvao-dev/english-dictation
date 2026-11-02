@@ -42,6 +42,7 @@ const portuguese: Record<string, string> = {
   'There are no lines matching these criteria after the current video position. Lower the minimum word count or maximum length, or rewind the video.': 'Não há falas que atendam a esses critérios após a posição atual do vídeo. Reduza o mínimo de palavras ou o tamanho máximo, ou volte o vídeo.',
   'Click the video play button to start playback.': 'Clique em reproduzir no vídeo para iniciar.', 'There are no more eligible lines in this video.': 'Não há mais falas válidas neste vídeo.', 'Skip →': 'Pular →', 'End session': 'Encerrar sessão', 'Favorited': 'Favoritado', 'Favorite': 'Favoritar',
   'Shortcuts saved on this computer': 'Atalhos salvos neste computador',
+  'Video ready': 'Vídeo pronto', 'Your video has finished processing and is ready to play.': 'O processamento do vídeo terminou. Ele já está pronto para reproduzir.', 'Dismiss notification': 'Fechar notificação',
 };
 
 declare global {
@@ -49,7 +50,8 @@ declare global {
     desktop?: {
       chooseVideo: () => Promise<SelectedVideo | string | null>;
       restoreLastVideo: () => Promise<SelectedVideo | null>;
-      prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<{ url: string; converted: boolean; playbackKey: string; resumePosition: number; savedSubtitleChoice: SubtitleChoice | null }>;
+      prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<{ url: string; converted: boolean; processedNow: boolean; playbackKey: string; resumePosition: number; savedSubtitleChoice: SubtitleChoice | null }>;
+      notifyVideoReady: (title: string, body: string) => void;
       savePlaybackPosition: (playbackKey: string, position: number) => void;
       extractSubtitle: (filePath: string, streamIndex: number) => Promise<SubtitleCue[]>;
       chooseExternalSubtitle: () => Promise<{ path: string; cues: SubtitleCue[] } | null>;
@@ -81,6 +83,25 @@ type SessionPreferences = {
   subtitleMode: 'outside' | 'off';
 };
 type FavoriteLine = { start: number; text: string };
+
+function CountryFlag({ country }: { country: 'us' | 'br' }) {
+  if (country === 'us') {
+    return <svg className="country-flag" viewBox="0 0 24 16" aria-hidden="true" focusable="false">
+      <rect width="24" height="16" fill="#fff" />
+      <path fill="#b22234" d="M0 0h24v1.23H0zm0 2.46h24v1.23H0zm0 2.46h24v1.23H0zm0 2.46h24v1.23H0zm0 2.46h24v1.23H0zm0 2.46h24v1.23H0zm0 2.46h24v1.23H0z" />
+      <rect width="10.2" height="8.62" fill="#3c3b6e" />
+      <path fill="#fff" d="m1.3 1.1.3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zm2.4 0 .3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zm2.4 0 .3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zm2.4 0 .3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zM2.5 2.8l.3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zm2.4 0 .3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zm2.4 0 .3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zM1.3 4.5l.3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zm2.4 0 .3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7zm2.4 0 .3.7h.7l-.6.4.2.7-.6-.4-.6.4.2-.7-.6-.4h.7z" />
+    </svg>;
+  }
+
+  return <svg className="country-flag" viewBox="0 0 24 16" aria-hidden="true" focusable="false">
+    <rect width="24" height="16" rx="1" fill="#009b3a" />
+    <path fill="#ffdf00" d="m12 2.1 9 5.9-9 5.9L3 8z" />
+    <circle cx="12" cy="8" r="3.35" fill="#002776" />
+    <path d="M8.9 6.6a5.8 5.8 0 0 1 6.15 1.2" fill="none" stroke="#fff" strokeWidth=".48" />
+    <g fill="#fff"><circle cx="10.3" cy="7.3" r=".2" /><circle cx="12.6" cy="9.3" r=".18" /><circle cx="13.5" cy="7.2" r=".16" /><circle cx="11.1" cy="9.6" r=".15" /></g>
+  </svg>;
+}
 
 function normalizeAnswer(text: string) {
   return text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]/gu, '');
@@ -177,11 +198,11 @@ export default function App() {
     const languageName = language === 'en-US' ? 'English (United States)' : 'Português (Brasil)';
     return <div className="language-control">
       <button className="language-button" type="button" aria-label={tr('Language')} title={languageName} aria-expanded={showLanguageMenu} onClick={() => setShowLanguageMenu(open => !open)}>
-        <span aria-hidden="true">{language === 'en-US' ? '🇺🇸' : '🇧🇷'}</span><span className="language-chevron" aria-hidden="true">⌄</span>
+        <CountryFlag country={language === 'en-US' ? 'us' : 'br'} /><span className="language-chevron" aria-hidden="true">⌄</span>
       </button>
       {showLanguageMenu && <div className="language-menu" role="menu" aria-label={tr('Language')}>
-        <button type="button" role="menuitemradio" aria-checked={language === 'en-US'} onClick={() => { setLanguage('en-US'); setShowLanguageMenu(false); }}><span>🇺🇸</span> English (United States)</button>
-        <button type="button" role="menuitemradio" aria-checked={language === 'pt-BR'} onClick={() => { setLanguage('pt-BR'); setShowLanguageMenu(false); }}><span>🇧🇷</span> Português (Brasil)</button>
+        <button type="button" role="menuitemradio" aria-label="United States, English" aria-checked={language === 'en-US'} onClick={() => { setLanguage('en-US'); setShowLanguageMenu(false); }}><CountryFlag country="us" /> English (United States)</button>
+        <button type="button" role="menuitemradio" aria-label="Brasil, Português" aria-checked={language === 'pt-BR'} onClick={() => { setLanguage('pt-BR'); setShowLanguageMenu(false); }}><CountryFlag country="br" /> Português (Brasil)</button>
       </div>}
     </div>;
   }
@@ -194,6 +215,12 @@ export default function App() {
       aria-label={tr(`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`)}
       title={tr(`Switch to ${theme === 'dark' ? 'light' : 'dark'} appearance`)}
     ><span aria-hidden="true">{theme === 'dark' ? '☼' : '☾'}</span><span>{tr(theme === 'dark' ? 'Light' : 'Dark')}</span></button>;
+  }
+
+  function announceVideoReady() {
+    const title = tr('Video ready');
+    const body = tr('Your video has finished processing and is ready to play.');
+    window.desktop?.notifyVideoReady(title, body);
   }
 
   function savePlaybackPosition(position: number, force = false) {
@@ -411,6 +438,7 @@ export default function App() {
       setVideoProgress(0);
       const prepared = await window.desktop?.prepareVideo(selected.path, selected);
       if (prepared) {
+        if (prepared.processedNow) announceVideoReady();
         setPlaybackKey(prepared.playbackKey);
         setResumePosition(prepared.resumePosition);
         lastPositionSaveRef.current = { at: Date.now(), position: prepared.resumePosition, playbackKey: prepared.playbackKey };
@@ -642,6 +670,10 @@ export default function App() {
 
   function updateWord(index: number, expectedWords: string[], value: string, cue: SubtitleCue) {
     const nextWords = [...answerWords];
+    const isWordCorrect = (wordIndex: number, words: string[]) =>
+      (prefillFirstWord && wordIndex === 0)
+      || ((words[wordIndex] || '').length > 0 && normalizeAnswer(words[wordIndex]) === normalizeAnswer(expectedWords[wordIndex]));
+    if (isWordCorrect(index, answerWords)) return;
     const typedLetters = Array.from(value).filter(character => /[\p{L}\p{N}]/u.test(character)).join('');
     const wordLimit = expectedWords[index].length;
     let focusIndex = index;
@@ -649,7 +681,7 @@ export default function App() {
       nextWords[index] = typedLetters.slice(0, wordLimit);
       let overflow = typedLetters.slice(wordLimit);
       for (let nextIndex = index + 1; nextIndex < expectedWords.length && overflow.length > 0; nextIndex += 1) {
-        if (prefillFirstWord && nextIndex === 0) continue;
+        if (isWordCorrect(nextIndex, nextWords)) continue;
         const combined = `${overflow}${nextWords[nextIndex] || ''}`;
         const nextLimit = expectedWords[nextIndex].length;
         nextWords[nextIndex] = combined.slice(0, nextLimit);
@@ -742,6 +774,7 @@ export default function App() {
       const isPrefilled = prefillFirstWord && wordIndex === 0;
       const shownValue = isPrefilled ? word : value;
       const isCorrect = shownValue.length > 0 && normalizeAnswer(shownValue) === normalizeAnswer(word);
+      const isLocked = isPrefilled || isCorrect;
       const typed = normalizeAnswer(value);
       const expected = normalizeAnswer(word);
       const hasWrongCharacter = Array.from(typed).some((character, characterIndex) => character !== Array.from(expected)[characterIndex]);
@@ -759,17 +792,41 @@ export default function App() {
           }}
           onChange={event => updateWord(thisIndex, expectedWords, event.target.value, cue)}
           onFocus={() => { lastFocusedWordRef.current = thisIndex; }}
-          readOnly={isPrefilled}
+          readOnly={isLocked}
           onKeyDown={event => {
             const input = event.currentTarget;
-            if (event.key === 'ArrowLeft' && input.selectionStart === 0 && thisIndex > (prefillFirstWord ? 1 : 0)) {
+            if (event.key === 'Tab') {
+              const direction = event.shiftKey ? -1 : 1;
+              const minIndex = prefillFirstWord ? 1 : 0;
+              let nextIndex = thisIndex + direction;
+              while (nextIndex >= minIndex && nextIndex < expectedWords.length) {
+                const nextWord = expectedWords[nextIndex];
+                const nextValue = answerWords[nextIndex] || '';
+                const nextIsLocked = (prefillFirstWord && nextIndex === 0)
+                  || (nextValue.length > 0 && normalizeAnswer(nextValue) === normalizeAnswer(nextWord));
+                if (!nextIsLocked) break;
+                nextIndex += direction;
+              }
+              if (nextIndex >= minIndex && nextIndex < expectedWords.length) {
+                event.preventDefault();
+                wordInputRefs.current[nextIndex]?.focus();
+              }
+            } else if (event.key === 'ArrowLeft' && input.selectionStart === 0 && thisIndex > (prefillFirstWord ? 1 : 0)) {
               event.preventDefault();
-              const previous = wordInputRefs.current[thisIndex - 1];
-              if (previous) { previous.focus(); previous.setSelectionRange(previous.value.length, previous.value.length); }
+              let previousIndex = thisIndex - 1;
+              while (previousIndex >= (prefillFirstWord ? 1 : 0)) {
+                const previous = wordInputRefs.current[previousIndex];
+                if (previous) { previous.focus(); previous.setSelectionRange(previous.value.length, previous.value.length); break; }
+                previousIndex -= 1;
+              }
             } else if (event.key === 'ArrowRight' && input.selectionStart === input.value.length && thisIndex < expectedWords.length - 1) {
               event.preventDefault();
-              const next = wordInputRefs.current[thisIndex + 1];
-              if (next) { next.focus(); next.setSelectionRange(0, 0); }
+              let nextIndex = thisIndex + 1;
+              while (nextIndex < expectedWords.length) {
+                const next = wordInputRefs.current[nextIndex];
+                if (next) { next.focus(); next.setSelectionRange(0, 0); break; }
+                nextIndex += 1;
+              }
             } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
               const nextIndex = thisIndex + (event.key === 'ArrowUp' ? -1 : 1);
               const minIndex = prefillFirstWord ? 1 : 0;

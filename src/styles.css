@@ -164,6 +164,7 @@ footer { margin-top: auto; padding-top: 22px; border-top: 1px solid var(--separa
 .language-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 46px; min-height: 36px; padding: 7px 9px; border: 1px solid var(--control-border); border-radius: 9px; background: var(--surface-raised); color: var(--text); cursor: pointer; font-size: 16px; }
 .language-button:hover, .language-button:focus-visible { border-color: var(--focus); }
 .language-chevron { color: var(--secondary); font-size: 12px; }
+.country-flag { display: inline-block; width: 24px; height: 16px; flex: 0 0 auto; border-radius: 2px; vertical-align: middle; box-shadow: 0 0 0 1px #ffffff20; }
 .language-menu { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; min-width: 220px; padding: 5px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--surface-raised); box-shadow: 0 10px 28px var(--shadow); }
 .language-menu button { display: flex; width: 100%; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font-size: 12px; cursor: pointer; }
 .language-menu button:hover, .language-menu button[aria-checked='true'] { background: var(--surface-hover); }
