@@ -901,6 +901,9 @@ export default function App() {
   }
 
   const captionCue = subtitleCues.find(cue => playbackTime >= cue.start && playbackTime <= cue.end);
+  const dictationCuePlaying = !activeCue && !!nextCue
+    && playbackTime >= nextCue.start
+    && playbackTime < nextCue.end;
   const currentCaption = captionCue && !activeCue && !(nextCue && captionCue.start === nextCue.start)
     ? captionCue.text
     : undefined;
@@ -982,7 +985,7 @@ export default function App() {
           </div>
           <div className="game-layout">
             <section className="card game-player-card">
-              <div className={`game-video-wrap ${activeCue ? 'dictation-active' : ''}`} ref={gameVideoWrapRef}>
+              <div className={`game-video-wrap ${dictationCuePlaying ? 'dictation-active' : ''}`} ref={gameVideoWrapRef}>
                 <video
                   ref={gameVideoRef}
                   className="game-video"
