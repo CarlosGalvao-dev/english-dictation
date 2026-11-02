@@ -132,6 +132,7 @@ footer { margin-top: auto; padding-top: 22px; border-top: 1px solid var(--separa
 .game-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 17px; align-items: stretch; }
 .game-player-card { padding: clamp(10px, 1.4vw, 19px); }
 .game-video-wrap { position: relative; overflow: hidden; background: #05080b; border: 1px solid #36434d; }
+.game-video-wrap.dictation-active::after { position: absolute; z-index: 10; inset: 0; border: 4px solid #e53935; content: ''; pointer-events: none; }
 .game-video-wrap:fullscreen { width: 100vw; height: 100vh; display: grid; place-items: center; border: 0; }
 .game-video-wrap:fullscreen .game-video { width: 100%; height: 100%; max-height: none; aspect-ratio: auto; }
 .game-video-wrap:fullscreen .subtitle-overlay { bottom: 58px; }
