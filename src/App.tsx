@@ -43,6 +43,9 @@ const portuguese: Record<string, string> = {
   'Click the video play button to start playback.': 'Clique em reproduzir no vídeo para iniciar.', 'There are no more eligible lines in this video.': 'Não há mais falas válidas neste vídeo.', 'Skip →': 'Pular →', 'End session': 'Encerrar sessão', 'Favorited': 'Favoritado', 'Favorite': 'Favoritar',
   'Shortcuts saved on this computer': 'Atalhos salvos neste computador',
   'Video ready': 'Vídeo pronto', 'Your video has finished processing and is ready to play.': 'O processamento do vídeo terminou. Ele já está pronto para reproduzir.', 'Dismiss notification': 'Fechar notificação',
+  'Remuxed without re-encoding (fast, no quality loss)': 'Remuxado sem recodificar (rápido e sem perda de qualidade)', 'Audio track re-encoded to AAC': 'Faixa de áudio recodificada em AAC', 'Video re-encoded for compatibility': 'Vídeo recodificado por compatibilidade',
+  'This video has no audio track to dictate.': 'Este vídeo não tem faixa de áudio para ditar.',
+  'Cancel preparation': 'Cancelar preparação', 'Video preparation cancelled. Choose the video again to restart.': 'Preparação do vídeo cancelada. Escolha o vídeo novamente para recomeçar.',
 };
 
 declare global {
@@ -50,7 +53,8 @@ declare global {
     desktop?: {
       chooseVideo: () => Promise<SelectedVideo | string | null>;
       restoreLastVideo: () => Promise<SelectedVideo | null>;
-      prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<{ url: string; converted: boolean; processedNow: boolean; playbackKey: string; resumePosition: number; savedSubtitleChoice: SubtitleChoice | null }>;
+      prepareVideo: (filePath: string, videoInfo: VideoInfo) => Promise<VideoPreparation>;
+      cancelPrepare: () => Promise<boolean>;
       notifyVideoReady: (title: string, body: string) => void;
       savePlaybackPosition: (playbackKey: string, position: number) => void;
       extractSubtitle: (filePath: string, streamIndex: number) => Promise<SubtitleCue[]>;
@@ -71,9 +75,24 @@ declare global {
 }
 
 type SubtitleTrack = { index: number; codec: string; label: string; textSupported: boolean };
+type AudioTrack = { index: number; codec: string; channels: number; language: string; title: string; default: boolean; label: string };
 type SubtitleCue = { start: number; end: number; text: string };
-type VideoInfo = { videoCodec: string; pixelFormat: string; format: string; duration?: number };
-type SelectedVideo = VideoInfo & { path: string; tracks: SubtitleTrack[] };
+type VideoInfo = { videoCodec: string; pixelFormat: string; format: string; duration?: number; videoStreamIndex?: number | null };
+type SelectedVideo = VideoInfo & { path: string; tracks: SubtitleTrack[]; audioTracks: AudioTrack[] };
+type PlaybackMode = 'direct' | 'remux' | 'audio' | 'encode';
+type PreparedVideo = {
+  cancelled: false;
+  url: string;
+  converted: boolean;
+  processedNow: boolean;
+  mode: PlaybackMode;
+  target: 'mp4' | 'webm';
+  audio: AudioTrack | null;
+  playbackKey: string;
+  resumePosition: number;
+  savedSubtitleChoice: SubtitleChoice | null;
+};
+type VideoPreparation = PreparedVideo | { cancelled: true };
 type SubtitleChoice = { kind: 'internal'; streamIndex: number } | { kind: 'external'; path: string };
 type SessionPreferences = {
   interval: number;
@@ -129,6 +148,8 @@ export default function App() {
     if (match) return `${match[1] === 'Subtitle loaded' ? 'Legenda carregada' : 'Legenda externa carregada'} · ${match[2]} linhas`;
     match = text.match(/^This video has subtitle tracks, but they are not text-based: (.+)\.$/);
     if (match) return `Este vídeo tem faixas de legenda, mas elas não são de texto: ${match[1]}.`;
+    match = text.match(/^Audio: (.+)$/);
+    if (match) return `Áudio: ${match[1]}`;
     return text;
   };
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -142,6 +163,9 @@ export default function App() {
   const [videoError, setVideoError] = useState('');
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoProgress, setVideoProgress] = useState<number | null>(0);
+  const [audioTrack, setAudioTrack] = useState<AudioTrack | null>(null);
+  const [preparationMode, setPreparationMode] = useState<PlaybackMode | null>(null);
+  const [videoNotice, setVideoNotice] = useState('');
   const [playbackKey, setPlaybackKey] = useState('');
   const [resumePosition, setResumePosition] = useState(0);
   const [tracks, setTracks] = useState<SubtitleTrack[]>([]);
@@ -421,6 +445,9 @@ export default function App() {
       setVideo({ path: selected.path, url: '' });
       setPlaybackKey('');
       setResumePosition(0);
+      setAudioTrack(null);
+      setPreparationMode(null);
+      setVideoNotice('');
       lastPositionSaveRef.current = { at: 0, position: -1, playbackKey: '' };
       setTracks(selected.tracks.filter(track => track.textSupported));
       setSubtitleCues([]);
@@ -437,10 +464,25 @@ export default function App() {
       setVideoLoading(true);
       setVideoProgress(0);
       const prepared = await window.desktop?.prepareVideo(selected.path, selected);
+      if (prepared?.cancelled) {
+        setVideo(null);
+        setTracks([]);
+        setSubtitleCues([]);
+        setSelectedTrack('');
+        setExternalSubtitleName('');
+        setAudioTrack(null);
+        setPreparationMode(null);
+        setVideoProgress(0);
+        setSubtitleStatus('Internal subtitle tracks will appear here');
+        setVideoNotice('Video preparation cancelled. Choose the video again to restart.');
+        return;
+      }
       if (prepared) {
         if (prepared.processedNow) announceVideoReady();
         setPlaybackKey(prepared.playbackKey);
         setResumePosition(prepared.resumePosition);
+        setAudioTrack(prepared.audio);
+        setPreparationMode(prepared.mode);
         lastPositionSaveRef.current = { at: Date.now(), position: prepared.resumePosition, playbackKey: prepared.playbackKey };
         setVideo({ path: selected.path, url: prepared.url });
         setFavorites(await window.desktop?.loadFavorites() || []);
@@ -466,6 +508,10 @@ export default function App() {
     } catch (error) {
       setVideoError(error instanceof Error ? error.message : 'Could not open this video.');
     }
+  }
+
+  function cancelPreparation() {
+    void window.desktop?.cancelPrepare();
   }
 
   async function chooseTrack(value: string, filePath = video?.path, sourceKey = playbackKey) {
@@ -858,6 +904,13 @@ export default function App() {
   const currentCaption = captionCue && !activeCue && !(nextCue && captionCue.start === nextCue.start)
     ? captionCue.text
     : undefined;
+  const preparationNote = preparationMode === 'remux'
+    ? 'Remuxed without re-encoding (fast, no quality loss)'
+    : preparationMode === 'audio'
+      ? 'Audio track re-encoded to AAC'
+      : preparationMode === 'encode'
+        ? 'Video re-encoded for compatibility'
+        : '';
 
   function renderPhaseActions(className = '') {
     return <div className={`phase-actions ${className}`}>
@@ -1006,7 +1059,12 @@ export default function App() {
               <div className="processing-copy"><strong>{tr('Preparing video')}</strong><span>{videoProgress === null ? tr('Estimating conversion time…') : `${Math.round(videoProgress)}% ${tr('complete')}`}</span></div>
               <div className="processing-track"><div className={videoProgress === null ? 'processing-fill indeterminate' : 'processing-fill'} style={videoProgress === null ? undefined : { width: `${Math.max(3, videoProgress)}%` }} /></div>
               <small>{tr('The video is being optimized for smooth playback.')}</small>
+              <button className="cancel-preparation" type="button" onClick={cancelPreparation}>{tr('Cancel preparation')}</button>
             </div>}
+            {videoNotice && <p className="helper">{tr(videoNotice)}</p>}
+            {audioTrack && <p className="helper">{tr(`Audio: ${audioTrack.label}`)}</p>}
+            {video?.url && !audioTrack && <p className="video-error">{tr('This video has no audio track to dictate.')}</p>}
+            {preparationNote && <p className="helper">{tr(preparationNote)}</p>}
             {videoError && <p className="video-error">{tr(videoError)}</p>}
             {video?.url && <div className="video-preview-wrap">
               <video ref={previewRef} className="video-preview" src={video.url} controls onLoadedMetadata={restorePreviewPosition} onTimeUpdate={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime); }} onSeeked={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime, true); }} onPause={() => { if (previewRef.current) savePlaybackPosition(previewRef.current.currentTime, true); }} />
