@@ -1,6 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, clipboard, Notification } = require('electron');
 const path = require('node:path');
-const { execFile, spawn } = require('node:child_process');
+const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs/promises');
 const { createReadStream, watch: watchFs } = require('node:fs');
@@ -8,13 +8,18 @@ const { createServer } = require('node:http');
 const { createHash, randomBytes } = require('node:crypto');
 const ffprobePath = require('ffprobe-static').path;
 const ffmpegPath = require('ffmpeg-static');
+const { planPlayback, buildFfmpegArgs, summarizeProbe } = require('./video-plan.cjs');
+const { startFfmpeg } = require('./ffmpeg-run.cjs');
 
 const execFileAsync = promisify(execFile);
+const cacheFileNames = { mp4: 'processed-video.mp4', webm: 'processed-video.webm' };
+const cacheFileSet = new Set(Object.values(cacheFileNames));
 let mediaServer;
 let mediaServerUrl;
 let userSettingsPath;
-let processedVideoPath;
+let cacheDirectory;
 let cacheWatcher;
+let activePreparation = null;
 let lastVideoDirectory = '';
 let userSettings = {};
 let settingsWriteQueue = Promise.resolve();
@@ -48,16 +53,45 @@ function clearSavedFavorites(sourceKey = null) {
   userSettings.favoriteSourceKey = sourceKey;
 }
 
+function cachePathFor(target) {
+  return path.join(cacheDirectory, cacheFileNames[target === 'webm' ? 'webm' : 'mp4']);
+}
+
+function forgetProcessedCache() {
+  userSettings.processedVideoCacheKey = null;
+  userSettings.processedVideoPlanKey = null;
+  userSettings.processedVideoCacheFile = null;
+}
+
+async function deleteCachedVideos() {
+  await Promise.all(Object.values(cacheFileNames).map(name => fs.rm(path.join(cacheDirectory, name), { force: true })));
+}
+
+// `processed-video.mp4` -> `processed-video.part.mp4`: FFmpeg still picks the
+// muxer from the extension, and the watcher ignores files outside the cache set.
+function temporaryCachePathFor(outputPath) {
+  const extension = path.extname(outputPath);
+  return `${outputPath.slice(0, -extension.length)}.part${extension}`;
+}
+
+async function deleteTemporaryVideos() {
+  await Promise.all(Object.values(cacheFileNames).map(name =>
+    fs.rm(temporaryCachePathFor(path.join(cacheDirectory, name)), { force: true })));
+}
+
 async function clearFavoritesIfCacheWasDeleted() {
   const cacheKey = userSettings.processedVideoCacheKey;
   if (!cacheKey) return;
+  const fileName = cacheFileSet.has(userSettings.processedVideoCacheFile)
+    ? userSettings.processedVideoCacheFile
+    : cacheFileNames.mp4;
   let cacheExists = false;
   try {
-    const stats = await fs.stat(processedVideoPath);
+    const stats = await fs.stat(path.join(cacheDirectory, fileName));
     cacheExists = stats.size > 0;
   } catch { /* The processed cache was deleted. */ }
   if (cacheExists) return;
-  userSettings.processedVideoCacheKey = null;
+  forgetProcessedCache();
   if (userSettings.favoriteSourceKey === cacheKey) {
     const hadFavorites = savedFavorites().length > 0;
     clearSavedFavorites(cacheKey);
@@ -179,32 +213,13 @@ function createWindow() {
 
 async function inspectVideo(filePath) {
   const { stdout } = await execFileAsync(ffprobePath, [
-    '-v', 'error', '-show_entries', 'stream=index,codec_name,codec_type,pix_fmt:stream_tags=language,title:format=format_name,duration',
+    '-v', 'error', '-show_entries', 'stream=index,codec_name,codec_type,pix_fmt,channels:stream_tags=language,title:stream_disposition=attached_pic,default:format=format_name,duration',
     '-of', 'json', filePath,
   ], { maxBuffer: 8 * 1024 * 1024 });
-  const probe = JSON.parse(stdout);
-  const tracks = (probe.streams || [])
-    .filter(stream => stream.codec_type === 'subtitle')
-    .map((stream, index) => {
-      const language = stream.tags?.language || 'Unknown language';
-      const title = stream.tags?.title;
-      const textSupported = textSubtitleCodecs.has(stream.codec_name);
-      return {
-        index: stream.index,
-        codec: stream.codec_name,
-        textSupported,
-        label: `${title ? `${title} · ` : `Subtitle ${index + 1} · `}${language} · ${stream.codec_name}${textSupported ? '' : ' (image/not supported)'}`,
-      };
-    });
-  const videoStream = (probe.streams || []).find(stream => stream.codec_type === 'video');
-  return {
+  return summarizeProbe(JSON.parse(stdout), {
     path: filePath,
-    tracks,
-    videoCodec: videoStream?.codec_name || 'unknown',
-    pixelFormat: videoStream?.pix_fmt || '',
-    format: probe.format?.format_name || '',
-    duration: Number(probe.format?.duration) || 0,
-  };
+    isTextSubtitle: codec => textSubtitleCodecs.has(codec),
+  });
 }
 
 ipcMain.handle('dialog:video', async () => {
@@ -235,8 +250,12 @@ ipcMain.handle('video:restore-last', async () => {
 });
 
 ipcMain.handle('video:prepare', (event, filePath, videoInfo) => {
+  // Cancellation is tracked outside the queue so it also covers a preparation
+  // that has not started yet.
+  const preparation = { cancelled: false, cancel() {} };
+  activePreparation = preparation;
   const operation = videoPreparationQueue.then(async () => {
-    const extension = path.extname(filePath).toLowerCase();
+    if (preparation.cancelled) return { cancelled: true };
     const source = path.resolve(filePath);
     const sourceStats = await fs.stat(source);
     const cacheKey = createHash('sha256').update(JSON.stringify({
@@ -261,66 +280,106 @@ ipcMain.handle('video:prepare', (event, filePath, videoInfo) => {
       clearSavedFavorites(cacheKey);
       await persistUserSettings();
     }
-    const safeMp4 = ['.mp4', '.m4v', '.mov'].includes(extension)
-      && videoInfo.videoCodec === 'h264'
-      && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
-    const safeWebm = extension === '.webm' && ['vp8', 'vp9', 'av1'].includes(videoInfo.videoCodec);
-    if (safeMp4 || safeWebm) return { url: registerMediaFile(filePath), converted: false, processedNow: false, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
 
-    try {
-      const cachedStats = await fs.stat(processedVideoPath);
-      if (userSettings.processedVideoCacheKey === cacheKey && cachedStats.size > 0) {
-        return { url: registerMediaFile(processedVideoPath), converted: true, processedNow: false, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
-      }
-    } catch { /* Cache file does not exist yet. */ }
+    const audioTracks = Array.isArray(videoInfo?.audioTracks) ? videoInfo.audioTracks : [];
+    const plan = planPlayback({
+      extension: path.extname(source).toLowerCase(),
+      videoCodec: videoInfo?.videoCodec,
+      pixelFormat: videoInfo?.pixelFormat,
+      videoIndex: videoInfo?.videoStreamIndex,
+      audioTracks,
+    });
+    const chosenAudio = plan.audioIndex === null
+      ? null
+      : audioTracks.find(track => track.index === plan.audioIndex) || null;
+    const prepared = {
+      cancelled: false,
+      converted: plan.mode !== 'direct',
+      processedNow: false,
+      mode: plan.mode,
+      target: plan.target,
+      audio: chosenAudio ? { ...chosenAudio } : null,
+      playbackKey: cacheKey,
+      resumePosition,
+      savedSubtitleChoice,
+    };
+
+    // The source already satisfies the player: no copy, no conversion.
+    if (plan.mode === 'direct') return { ...prepared, url: registerMediaFile(source) };
+
+    const outputPath = cachePathFor(plan.target);
+    const planKey = createHash('sha256').update(JSON.stringify({
+      cacheKey,
+      mode: plan.mode,
+      target: plan.target,
+      videoIndex: plan.videoIndex,
+      audioIndex: plan.audioIndex,
+      audioCodec: plan.audioCodec,
+    })).digest('hex');
+
+    if (userSettings.processedVideoCacheKey === cacheKey && userSettings.processedVideoPlanKey === planKey) {
+      try {
+        const cachedStats = await fs.stat(outputPath);
+        if (cachedStats.size > 0) return { ...prepared, url: registerMediaFile(outputPath) };
+      } catch { /* Cache file does not exist yet. */ }
+    }
 
     // Replacing or regenerating the cached video also clears its favorite lines.
     clearSavedFavorites(cacheKey);
-    userSettings.processedVideoCacheKey = null;
+    forgetProcessedCache();
     await persistUserSettings();
-    const outputPath = processedVideoPath;
-    const h264 = videoInfo.videoCodec === 'h264' && ['yuv420p', 'yuvj420p'].includes(videoInfo.pixelFormat);
-    const args = ['-y', '-v', 'error', '-i', filePath, '-map', '0:v:0', '-map', '0:a:0?'];
-    if (h264) args.push('-c:v', 'copy');
-    else args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '25', '-pix_fmt', 'yuv420p');
-    args.push('-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath);
+    if (preparation.cancelled) return { cancelled: true };
 
-    await new Promise((resolve, reject) => {
-      const process = spawn(ffmpegPath, args, { windowsHide: true });
-      let errorText = '';
-      let progressBuffer = '';
-      process.stderr.setEncoding('utf8');
-      process.stderr.on('data', chunk => { errorText += chunk; });
-      process.stdout.setEncoding('utf8');
-      process.stdout.on('data', chunk => {
-        progressBuffer += chunk;
-        const lines = progressBuffer.split(/\r?\n/);
-        progressBuffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line === 'progress=end') {
-            if (!event.sender.isDestroyed()) event.sender.send('video:progress', { percent: 100 });
-            continue;
-          }
-          if (!line.startsWith('out_time_ms=')) continue;
-          const outputTime = Number(line.slice('out_time_ms='.length));
-          const duration = Number(videoInfo.duration);
-          const percent = Number.isFinite(outputTime) && duration > 0
-            ? Math.max(0, Math.min(100, outputTime / (duration * 1_000_000) * 100))
-            : null;
-          if (!event.sender.isDestroyed()) event.sender.send('video:progress', { percent });
-        }
-      });
-      process.once('error', reject);
-      process.once('close', code => code === 0 ? resolve() : reject(new Error(errorText || `FFmpeg exited with code ${code}`)));
+    // Converting into a temporary file keeps the previous cache intact when the
+    // player cancels or FFmpeg fails.
+    const temporaryPath = temporaryCachePathFor(outputPath);
+    await fs.rm(temporaryPath, { force: true });
+    const run = startFfmpeg({
+      ffmpegPath,
+      args: buildFfmpegArgs(plan, source, temporaryPath),
+      duration: Number(videoInfo.duration),
+      onProgress: percent => {
+        if (!event.sender.isDestroyed()) event.sender.send('video:progress', { percent });
+      },
     });
-    const outputStats = await fs.stat(outputPath);
-    if (!outputStats.size) throw new Error('FFmpeg produced an empty playback cache file.');
+    preparation.cancel = () => run.cancel();
+
+    let result;
+    try {
+      result = await run.promise;
+    } finally {
+      preparation.cancel = () => {};
+    }
+    if (result.cancelled || preparation.cancelled) {
+      await fs.rm(temporaryPath, { force: true });
+      return { cancelled: true };
+    }
+
+    const outputStats = await fs.stat(temporaryPath);
+    if (!outputStats.size) {
+      await fs.rm(temporaryPath, { force: true });
+      throw new Error('FFmpeg produced an empty playback cache file.');
+    }
+    await deleteCachedVideos();
+    await fs.rename(temporaryPath, outputPath);
     userSettings.processedVideoCacheKey = cacheKey;
+    userSettings.processedVideoPlanKey = planKey;
+    userSettings.processedVideoCacheFile = path.basename(outputPath);
     await persistUserSettings();
-    return { url: registerMediaFile(outputPath), converted: true, processedNow: true, playbackKey: cacheKey, resumePosition, savedSubtitleChoice };
+    return { ...prepared, url: registerMediaFile(outputPath), processedNow: true };
   });
   videoPreparationQueue = operation.catch(() => {});
-  return operation;
+  return operation.finally(() => {
+    if (activePreparation === preparation) activePreparation = null;
+  });
+});
+
+ipcMain.handle('video:cancel', () => {
+  const preparation = activePreparation;
+  if (!preparation) return false;
+  preparation.cancelled = true;
+  preparation.cancel();
+  return true;
 });
 
 ipcMain.handle('subtitle:extract', async (_event, filePath, streamIndex) => {
@@ -490,12 +549,13 @@ app.whenReady().then(async () => {
     if (settings && typeof settings === 'object' && !Array.isArray(settings)) userSettings = settings;
     if (typeof userSettings.lastVideoDirectory === 'string') lastVideoDirectory = userSettings.lastVideoDirectory;
   } catch { /* First launch: no local preferences yet. */ }
-  processedVideoPath = path.join(app.getAppPath(), '.video-cache', 'processed-video.mp4');
-  await fs.mkdir(path.dirname(processedVideoPath), { recursive: true });
+  cacheDirectory = path.join(app.getAppPath(), '.video-cache');
+  await fs.mkdir(cacheDirectory, { recursive: true });
+  await deleteTemporaryVideos();
   await clearFavoritesIfCacheWasDeleted();
   try {
-    cacheWatcher = watchFs(path.dirname(processedVideoPath), (_eventType, fileName) => {
-      if (fileName && fileName.toString() !== path.basename(processedVideoPath)) return;
+    cacheWatcher = watchFs(cacheDirectory, (_eventType, fileName) => {
+      if (fileName && !cacheFileSet.has(fileName.toString())) return;
       void clearFavoritesIfCacheWasDeleted().catch(error => console.error('Could not clear favorites after cache deletion:', error));
     });
   } catch (error) {
