@@ -982,7 +982,7 @@ export default function App() {
           </div>
           <div className="game-layout">
             <section className="card game-player-card">
-              <div className="game-video-wrap" ref={gameVideoWrapRef}>
+              <div className={`game-video-wrap ${activeCue ? 'dictation-active' : ''}`} ref={gameVideoWrapRef}>
                 <video
                   ref={gameVideoRef}
                   className="game-video"
