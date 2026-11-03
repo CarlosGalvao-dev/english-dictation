@@ -190,14 +190,16 @@ footer { margin-top: auto; padding-top: 22px; border-top: 1px solid var(--separa
   z-index: 8;
   top: 16px;
   left: 16px;
-  right: 76px;
   gap: 8px;
-  padding: 9px;
-  border: 1px solid #ffffff30;
-  border-radius: 12px;
-  background: #151517d9;
-  backdrop-filter: blur(16px);
   pointer-events: none;
 }
-.game-video-wrap:fullscreen .fullscreen-phase-actions button { pointer-events: auto; }
+.game-video-wrap:fullscreen .fullscreen-phase-actions button {
+  pointer-events: auto;
+  padding: 10px 15px;
+  border: 1px solid #ffffff45;
+  border-radius: 999px;
+  background: #151517d9;
+  box-shadow: 0 4px 16px #0009;
+  backdrop-filter: blur(10px);
+}
 .game-video-wrap:fullscreen .fullscreen-phase-actions .end-session-button { margin-left: 0; }
